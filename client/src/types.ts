@@ -14,6 +14,7 @@ export interface Asset {
 
 export interface ZakatSummary {
   totalWealthEGP: number;
+  zakatableWealthEGP: number;
   nisabThresholdEGP: number;
   isAboveNisab: boolean;
   hawlComplete: boolean;
@@ -27,6 +28,7 @@ export interface ZakatSummary {
 export interface AssetZakatInfo {
   asset: Asset;
   amountEGP: number;
+  excludedFromZakat: boolean;
 }
 
 export interface ZakatRecord {

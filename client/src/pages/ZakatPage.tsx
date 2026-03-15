@@ -5,9 +5,10 @@ import {
   getZakatRecords,
   generateZakatRecords,
   markZakatPaid,
+  deleteZakatRecord,
   sendReminder,
 } from '../services/api';
-import { Mail, CheckCircle, RefreshCw } from 'lucide-react';
+import { Mail, CheckCircle, RefreshCw, Trash2 } from 'lucide-react';
 
 const HIJRI_MONTHS = [
   'Muharram', 'Safar', 'Rabi al-Awwal', 'Rabi al-Thani',
@@ -68,6 +69,17 @@ export default function ZakatPage({ showToast }: Props) {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this Zakat record?')) return;
+    try {
+      await deleteZakatRecord(id);
+      showToast('Zakat record deleted', 'success');
+      loadData();
+    } catch (err) {
+      showToast('Failed to delete record', 'error');
+    }
+  };
+
   const handleSendReminder = async () => {
     setSending(true);
     try {
@@ -119,7 +131,9 @@ export default function ZakatPage({ showToast }: Props) {
               <div className="sub">
                 {summary.isAboveNisab
                   ? summary.hawlComplete
-                    ? 'Above Nisab & Hawl complete - Zakat due'
+                    ? summary.zakatableWealthEGP !== summary.totalWealthEGP
+                      ? `2.5% of ${summary.zakatableWealthEGP.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP (zakatable wealth)`
+                      : 'Above Nisab & Hawl complete - Zakat due'
                     : 'Above Nisab - Hawl pending'
                   : 'Below Nisab - No Zakat due'}
               </div>
@@ -169,11 +183,16 @@ export default function ZakatPage({ showToast }: Props) {
                       )}
                     </td>
                     <td>
-                      {!record.is_paid && (
-                        <button className="btn btn-sm btn-primary" onClick={() => handlePay(record.id)}>
-                          <CheckCircle size={14} /> Mark Paid
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {!record.is_paid && (
+                          <button className="btn btn-sm btn-primary" onClick={() => handlePay(record.id)}>
+                            <CheckCircle size={14} /> Mark Paid
+                          </button>
+                        )}
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(record.id)}>
+                          <Trash2 size={14} />
                         </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -188,7 +207,8 @@ export default function ZakatPage({ showToast }: Props) {
         <ul style={{ paddingLeft: 20, lineHeight: 2 }}>
           <li><strong>Nisab:</strong> Your total wealth must exceed the value of 85 grams of gold.</li>
           <li><strong>Hawl:</strong> The Hawl (one Hijri year) starts when your total wealth first reaches the Nisab threshold.</li>
-          <li><strong>Rate:</strong> Zakat is 2.5% of your total wealth at the time the Hawl completes.</li>
+          <li><strong>Rate:</strong> Zakat is 2.5% of your zakatable wealth at the time the Hawl completes.</li>
+          <li><strong>New Assets:</strong> Assets acquired after the Hawl completion date are excluded from the current Zakat and will be included in the next Hawl period.</li>
           <li><strong>Reset:</strong> If your wealth drops below Nisab, the Hawl resets. After paying Zakat, a new Hawl cycle begins.</li>
           <li><strong>Calendar:</strong> All dates are tracked using the Hijri calendar for accuracy.</li>
         </ul>

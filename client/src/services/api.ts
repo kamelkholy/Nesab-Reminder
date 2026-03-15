@@ -43,6 +43,9 @@ export const generateZakatRecords = () =>
 export const markZakatPaid = (id: string) =>
   request<{ success: boolean }>(`/zakat/pay/${id}`, { method: 'POST' });
 
+export const deleteZakatRecord = (id: string) =>
+  request<{ success: boolean }>(`/zakat/records/${id}`, { method: 'DELETE' });
+
 export const sendReminder = () =>
   request<{ success: boolean; message: string }>('/zakat/remind', { method: 'POST' });
 

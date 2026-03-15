@@ -319,6 +319,19 @@ tr:hover td {
   background: #f8faf8;
 }
 
+tr.row-zakatable td {
+  background: var(--color-primary-light);
+  border-left-color: var(--color-primary);
+}
+
+tr.row-zakatable td:first-child {
+  border-left: 3px solid var(--color-primary);
+}
+
+tr.row-zakatable:hover td {
+  background: #d4edda;
+}
+
 /* Badges */
 .badge {
   display: inline-block;

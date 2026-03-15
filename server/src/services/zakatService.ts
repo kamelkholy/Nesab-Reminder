@@ -8,6 +8,7 @@ import {
   getCurrentHijriYear,
   getCurrentHijriDate,
   formatHijriDate,
+  comparHijriDates,
 } from '../utils/hijri';
 
 // Nisab = 85 grams of gold
@@ -35,7 +36,7 @@ export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: 
       : asset.amount;
     const amountEGP = toEGP(baseAmount, asset.currency, usdToEgpRate);
     totalWealthEGP += amountEGP;
-    assets.push({ asset, amountEGP });
+    assets.push({ asset, amountEGP, excludedFromZakat: false });
   }
 
   const isAboveNisab = totalWealthEGP >= nisabThreshold;
@@ -68,10 +69,25 @@ export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: 
 
   const hawlComplete = nisabReachedDate ? isHawlComplete(nisabReachedDate) : false;
   const hawlCompletionDate = nisabReachedDate ? getHawlCompletionDate(nisabReachedDate) : null;
-  const totalZakatDue = isAboveNisab && hawlComplete ? totalWealthEGP * 0.025 : 0;
+
+  // When hawl is complete, exclude assets acquired after the hawl completion date
+  let zakatableWealthEGP = totalWealthEGP;
+  if (hawlComplete && hawlCompletionDate) {
+    zakatableWealthEGP = 0;
+    for (const info of assets) {
+      if (comparHijriDates(info.asset.hijri_date, hawlCompletionDate) > 0) {
+        info.excludedFromZakat = true;
+      } else {
+        zakatableWealthEGP += info.amountEGP;
+      }
+    }
+  }
+
+  const totalZakatDue = isAboveNisab && hawlComplete ? zakatableWealthEGP * 0.025 : 0;
 
   return {
     totalWealthEGP,
+    zakatableWealthEGP,
     nisabThresholdEGP: nisabThreshold,
     isAboveNisab,
     hawlComplete,

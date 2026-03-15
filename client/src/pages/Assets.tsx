@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Asset } from '../types';
-import { getAssets, deleteAsset } from '../services/api';
+import { Asset, ZakatSummary } from '../types';
+import { getAssets, deleteAsset, getZakatSummary } from '../services/api';
 import AssetForm from '../components/AssetForm';
+import { formatHijriDate } from '../utils/hijri';
 import { Plus, Edit2, Trash2, Wallet } from 'lucide-react';
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 
 export default function Assets({ showToast }: Props) {
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [zakatableAssetIds, setZakatableAssetIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | undefined>();
@@ -20,8 +22,14 @@ export default function Assets({ showToast }: Props) {
 
   const loadAssets = async () => {
     try {
-      const data = await getAssets();
+      const [data, summary] = await Promise.all([getAssets(), getZakatSummary()]);
       setAssets(data);
+      const ids = new Set<string>(
+        summary.assets
+          .filter(a => !a.excludedFromZakat && a.asset.id)
+          .map(a => a.asset.id!)
+      );
+      setZakatableAssetIds(ids);
     } catch (err) {
       showToast('Failed to load assets', 'error');
     } finally {
@@ -89,7 +97,7 @@ export default function Assets({ showToast }: Props) {
                 <h3>Cash & Money</h3>
                 <span className="badge badge-cash">{cashAssets.length} items</span>
               </div>
-              <AssetTable assets={cashAssets} onEdit={handleEdit} onDelete={handleDelete} />
+              <AssetTable assets={cashAssets} onEdit={handleEdit} onDelete={handleDelete} zakatableIds={zakatableAssetIds} />
             </div>
           )}
 
@@ -99,7 +107,7 @@ export default function Assets({ showToast }: Props) {
                 <h3>Investments</h3>
                 <span className="badge badge-investment">{investmentAssets.length} items</span>
               </div>
-              <AssetTable assets={investmentAssets} onEdit={handleEdit} onDelete={handleDelete} />
+              <AssetTable assets={investmentAssets} onEdit={handleEdit} onDelete={handleDelete} zakatableIds={zakatableAssetIds} />
             </div>
           )}
 
@@ -109,7 +117,7 @@ export default function Assets({ showToast }: Props) {
                 <h3>Stocks</h3>
                 <span className="badge badge-stock">{stockAssets.length} items</span>
               </div>
-              <AssetTable assets={stockAssets} onEdit={handleEdit} onDelete={handleDelete} showStockCols />
+              <AssetTable assets={stockAssets} onEdit={handleEdit} onDelete={handleDelete} showStockCols zakatableIds={zakatableAssetIds} />
             </div>
           )}
         </>
@@ -132,11 +140,13 @@ function AssetTable({
   onEdit,
   onDelete,
   showStockCols = false,
+  zakatableIds,
 }: {
   assets: Asset[];
   onEdit: (a: Asset) => void;
   onDelete: (id: string) => void;
   showStockCols?: boolean;
+  zakatableIds: Set<string>;
 }) {
   return (
     <div className="table-wrapper">
@@ -149,12 +159,15 @@ function AssetTable({
             {showStockCols && <th>Shares</th>}
             <th>Acquisition Date</th>
             <th>Hijri Date</th>
+            <th>Due This Hawl</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {assets.map((asset) => (
-            <tr key={asset.id}>
+          {[...assets].sort((a, b) => b.hijri_date.localeCompare(a.hijri_date)).map((asset) => {
+            const isZakatable = !!(asset.id && zakatableIds.has(asset.id));
+            return (
+            <tr key={asset.id} className={isZakatable ? 'row-zakatable' : ''}>
               <td><strong>{asset.description}</strong></td>
               <td>
                 {showStockCols && asset.quantity
@@ -165,7 +178,13 @@ function AssetTable({
               {showStockCols && <td>{asset.ticker || '—'}</td>}
               {showStockCols && <td>{asset.quantity || '—'}</td>}
               <td>{asset.acquisition_date}</td>
-              <td>{asset.hijri_date}</td>
+              <td>{formatHijriDate(asset.hijri_date)}</td>
+              <td>
+                {isZakatable
+                  ? <span className="badge badge-success">Yes</span>
+                  : <span className="badge badge-pending">No</span>
+                }
+              </td>
               <td>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-sm btn-secondary" onClick={() => onEdit(asset)}>
@@ -177,7 +196,8 @@ function AssetTable({
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

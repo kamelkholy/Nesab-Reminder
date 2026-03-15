@@ -84,6 +84,11 @@ export async function deleteUnpaidRecords(): Promise<number> {
   return result.deletedCount;
 }
 
+export async function deleteZakatRecord(id: string): Promise<boolean> {
+  const result = await ZakatRecordDoc.deleteOne({ _id: id });
+  return result.deletedCount > 0;
+}
+
 // --- Settings CRUD ---
 export async function getSetting(key: string): Promise<string | undefined> {
   const doc = await SettingDoc.findOne({ key });

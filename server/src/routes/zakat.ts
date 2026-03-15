@@ -56,6 +56,18 @@ router.delete('/records/unpaid', async (_req: Request, res: Response) => {
   res.json({ success: true, deleted });
 });
 
+// DELETE a specific zakat record
+router.delete('/records/:id', async (req: Request, res: Response) => {
+  const id = req.params.id;
+  const record = await zakatModel.getZakatRecordById(id);
+  if (!record) {
+    res.status(404).json({ error: 'Zakat record not found' });
+    return;
+  }
+  await zakatModel.deleteZakatRecord(id);
+  res.json({ success: true });
+});
+
 // POST send email reminder
 router.post('/remind', async (_req: Request, res: Response) => {
   const { goldPriceEGP, usdToEgp } = await getZakatParams();

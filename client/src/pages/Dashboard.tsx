@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZakatSummary } from '../types';
 import { getZakatSummary, getAssets } from '../services/api';
+import { formatHijriDate } from '../utils/hijri';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface Props {
@@ -55,7 +56,11 @@ export default function Dashboard({ showToast }: Props) {
         <div className={`stat-card ${summary?.isAboveNisab ? 'danger' : ''}`}>
           <div className="label">Zakat Due</div>
           <div className="value">{summary?.totalZakatDue.toFixed(2) || '0.00'} EGP</div>
-          <div className="sub">2.5% of total wealth</div>
+          <div className="sub">
+            {summary?.hawlComplete && summary?.zakatableWealthEGP !== summary?.totalWealthEGP
+              ? `2.5% of ${summary.zakatableWealthEGP.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP (zakatable)`
+              : '2.5% of total wealth'}
+          </div>
         </div>
         <div className="stat-card warning">
           <div className="label">Hawl Status</div>
@@ -110,15 +115,20 @@ export default function Dashboard({ showToast }: Props) {
                 <tr>
                   <th>Asset</th>
                   <th>Type</th>
+                  <th>Hijri Date</th>
                   <th>Value</th>
                   <th>Value (EGP)</th>
+                  <th>Due This Hawl</th>
                 </tr>
               </thead>
               <tbody>
-                {[...summary.assets].sort((a, b) => a.asset.acquisition_date.localeCompare(b.asset.acquisition_date)).map((info) => (
-                  <tr key={info.asset.id}>
+                {[...summary.assets].sort((a, b) => b.asset.hijri_date.localeCompare(a.asset.hijri_date)).map((info) => {
+                  const isZakatable = !info.excludedFromZakat;
+                  return (
+                  <tr key={info.asset.id} className={isZakatable ? 'row-zakatable' : ''}>
                     <td><strong>{info.asset.description}</strong></td>
                     <td><span className={`badge badge-${info.asset.type}`}>{info.asset.type}</span></td>
+                    <td>{formatHijriDate(info.asset.hijri_date)}</td>
                     <td>
                       {info.asset.type === 'stock' && info.asset.quantity
                         ? (info.asset.quantity * info.asset.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })
@@ -126,8 +136,15 @@ export default function Dashboard({ showToast }: Props) {
                       } {info.asset.currency}
                     </td>
                     <td>{info.amountEGP.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</td>
+                    <td>
+                      {isZakatable
+                        ? <span className="badge badge-success">Yes</span>
+                        : <span className="badge badge-pending">No</span>
+                      }
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
