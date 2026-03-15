@@ -3,80 +3,70 @@ import { body, validationResult } from 'express-validator';
 import { calculateZakat, generateZakatRecords } from '../services/zakatService';
 import { sendZakatReminder } from '../services/emailService';
 import * as zakatModel from '../models/zakatModel';
-import { getAssetById, updateAssetDates } from '../models/assetModel';
-import { getCurrentHijriDate, hijriToGregorian } from '../utils/hijri';
+import { getCurrentHijriDate } from '../utils/hijri';
 
 const router = Router();
 
-function getZakatParams() {
-  const goldPriceEGP = parseFloat(zakatModel.getSetting('gold_price_per_gram_egp') || '3750');
-  const usdToEgp = parseFloat(zakatModel.getSetting('usd_to_egp_rate') || '50');
+async function getZakatParams() {
+  const goldPriceEGP = parseFloat((await zakatModel.getSetting('gold_price_per_gram_egp')) || '3750');
+  const usdToEgp = parseFloat((await zakatModel.getSetting('usd_to_egp_rate')) || '50');
   return { goldPriceEGP, usdToEgp };
 }
 
 // GET Zakat summary/calculation
-router.get('/summary', (_req: Request, res: Response) => {
-  const { goldPriceEGP, usdToEgp } = getZakatParams();
-  const summary = calculateZakat(goldPriceEGP, usdToEgp);
+router.get('/summary', async (_req: Request, res: Response) => {
+  const { goldPriceEGP, usdToEgp } = await getZakatParams();
+  const summary = await calculateZakat(goldPriceEGP, usdToEgp);
   res.json(summary);
 });
 
 // GET all zakat records
-router.get('/records', (_req: Request, res: Response) => {
-  const records = zakatModel.getZakatRecords();
+router.get('/records', async (_req: Request, res: Response) => {
+  const records = await zakatModel.getZakatRecords();
   res.json(records);
 });
 
 // POST generate zakat records for current year
-router.post('/generate', (_req: Request, res: Response) => {
-  const { goldPriceEGP, usdToEgp } = getZakatParams();
-  generateZakatRecords(goldPriceEGP, usdToEgp);
-  const records = zakatModel.getZakatRecords();
+router.post('/generate', async (_req: Request, res: Response) => {
+  const { goldPriceEGP, usdToEgp } = await getZakatParams();
+  await generateZakatRecords(goldPriceEGP, usdToEgp);
+  const records = await zakatModel.getZakatRecords();
   res.json({ success: true, records });
 });
 
 // POST mark zakat as paid
-router.post('/pay/:id', (req: Request, res: Response) => {
-  const id = parseInt(req.params.id);
-  const record = zakatModel.getZakatRecordById(id);
+router.post('/pay/:id', async (req: Request, res: Response) => {
+  const id = req.params.id;
+  const record = await zakatModel.getZakatRecordById(id);
   if (!record) {
     res.status(404).json({ error: 'Zakat record not found' });
     return;
   }
-  zakatModel.markZakatPaid(id);
+  await zakatModel.markZakatPaid(id);
 
-  // Advance the asset's hijri_date to current Hijri year (same month/day)
-  // so hawl completion becomes current Hijri year + 1
-  const asset = getAssetById(record.asset_id);
-  if (asset) {
-    const currentHijri = getCurrentHijriDate();
-    const currentYear = parseInt(currentHijri.split('/')[0]);
-    const parts = asset.hijri_date.split('/');
-    const newHijriDate = `${currentYear}/${parts[1]}/${parts[2]}`;
-    const newGregorianDate = hijriToGregorian(newHijriDate);
-    updateAssetDates(asset.id!, newGregorianDate, newHijriDate);
-  }
+  // Reset hawl: set nisab_reached_date to current date so a new cycle starts
+  await zakatModel.setSetting('nisab_reached_date_hijri', getCurrentHijriDate());
 
   res.json({ success: true });
 });
 
 // DELETE unpaid zakat records
-router.delete('/records/unpaid', (_req: Request, res: Response) => {
-  const deleted = zakatModel.deleteUnpaidRecords();
+router.delete('/records/unpaid', async (_req: Request, res: Response) => {
+  const deleted = await zakatModel.deleteUnpaidRecords();
   res.json({ success: true, deleted });
 });
 
 // POST send email reminder
 router.post('/remind', async (_req: Request, res: Response) => {
-  const { goldPriceEGP, usdToEgp } = getZakatParams();
-  const summary = calculateZakat(goldPriceEGP, usdToEgp);
+  const { goldPriceEGP, usdToEgp } = await getZakatParams();
+  const summary = await calculateZakat(goldPriceEGP, usdToEgp);
 
   if (!summary.isAboveNisab || summary.totalZakatDue === 0) {
     res.json({ success: false, message: 'No Zakat due at this time' });
     return;
   }
 
-  const emailTo = zakatModel.getSetting('email_to') || process.env.EMAIL_TO || '';
+  const emailTo = (await zakatModel.getSetting('email_to')) || process.env.EMAIL_TO || '';
   if (!emailTo) {
     res.status(400).json({ error: 'Email recipient not configured' });
     return;
@@ -97,10 +87,10 @@ router.post('/remind', async (_req: Request, res: Response) => {
 });
 
 // GET settings
-router.get('/settings', (_req: Request, res: Response) => {
-  const emailTo = zakatModel.getSetting('email_to') || '';
-  const goldPriceEgp = zakatModel.getSetting('gold_price_per_gram_egp') || '3750';
-  const usdToEgpRate = zakatModel.getSetting('usd_to_egp_rate') || '50';
+router.get('/settings', async (_req: Request, res: Response) => {
+  const emailTo = (await zakatModel.getSetting('email_to')) || '';
+  const goldPriceEgp = (await zakatModel.getSetting('gold_price_per_gram_egp')) || '3750';
+  const usdToEgpRate = (await zakatModel.getSetting('usd_to_egp_rate')) || '50';
   res.json({ email_to: emailTo, gold_price_per_gram_egp: goldPriceEgp, usd_to_egp_rate: usdToEgpRate });
 });
 
@@ -112,7 +102,7 @@ router.put(
     body('gold_price_per_gram_egp').optional().isFloat({ min: 0 }),
     body('usd_to_egp_rate').optional().isFloat({ min: 0 }),
   ],
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       res.status(400).json({ errors: errors.array() });
@@ -120,13 +110,13 @@ router.put(
     }
 
     if (req.body.email_to !== undefined) {
-      zakatModel.setSetting('email_to', req.body.email_to);
+      await zakatModel.setSetting('email_to', req.body.email_to);
     }
     if (req.body.gold_price_per_gram_egp !== undefined) {
-      zakatModel.setSetting('gold_price_per_gram_egp', req.body.gold_price_per_gram_egp.toString());
+      await zakatModel.setSetting('gold_price_per_gram_egp', req.body.gold_price_per_gram_egp.toString());
     }
     if (req.body.usd_to_egp_rate !== undefined) {
-      zakatModel.setSetting('usd_to_egp_rate', req.body.usd_to_egp_rate.toString());
+      await zakatModel.setSetting('usd_to_egp_rate', req.body.usd_to_egp_rate.toString());
     }
 
     res.json({ success: true });

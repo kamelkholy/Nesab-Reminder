@@ -1,119 +1,95 @@
-import { getDb, persist } from '../database';
+import mongoose, { Schema } from 'mongoose';
 import { ZakatRecord } from '../types';
 
-function rowToRecord(columns: string[], values: any[]): ZakatRecord {
-  const obj: any = {};
-  columns.forEach((col, i) => (obj[col] = values[i]));
-  return obj as ZakatRecord;
-}
-
-export function getZakatRecords(): ZakatRecord[] {
-  const db = getDb();
-  const result = db.exec('SELECT * FROM zakat_records ORDER BY created_at DESC');
-  if (result.length === 0) return [];
-  return result[0].values.map(row => rowToRecord(result[0].columns, row as any[]));
-}
-
-export function getZakatRecordsByAsset(assetId: number): ZakatRecord[] {
-  const db = getDb();
-  const stmt = db.prepare('SELECT * FROM zakat_records WHERE asset_id = ? ORDER BY created_at DESC');
-  stmt.bind([assetId]);
-  const records: ZakatRecord[] = [];
-  while (stmt.step()) {
-    records.push(stmt.getAsObject() as unknown as ZakatRecord);
+// --- Zakat Record Schema ---
+const zakatRecordSchema = new Schema(
+  {
+    hijri_year: { type: String, required: true },
+    amount_due: { type: Number, required: true },
+    is_paid: { type: Boolean, default: false },
+    reminder_sent: { type: Boolean, default: false },
+    due_date_hijri: { type: String, required: true },
+    due_date_gregorian: { type: String, required: true },
+  },
+  {
+    timestamps: { createdAt: 'created_at', updatedAt: false },
+    toJSON: {
+      virtuals: true,
+      transform: (_doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
-  stmt.free();
-  return records;
-}
+);
 
-export function createZakatRecord(record: Omit<ZakatRecord, 'id' | 'created_at'>): ZakatRecord {
-  const db = getDb();
-  db.run(
-    `INSERT INTO zakat_records (asset_id, hijri_year, amount_due, is_paid, reminder_sent, due_date_hijri, due_date_gregorian)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      record.asset_id,
-      record.hijri_year,
-      record.amount_due,
-      record.is_paid ? 1 : 0,
-      record.reminder_sent ? 1 : 0,
-      record.due_date_hijri,
-      record.due_date_gregorian,
-    ]
-  );
+export const ZakatRecordDoc = mongoose.model('ZakatRecord', zakatRecordSchema);
 
-  const result = db.exec('SELECT last_insert_rowid() as id');
-  const lastId = result[0].values[0][0] as number;
-  persist();
-  const stmt = db.prepare('SELECT * FROM zakat_records WHERE id = ?');
-  stmt.bind([lastId]);
-  stmt.step();
-  const row = stmt.getAsObject() as unknown as ZakatRecord;
-  stmt.free();
-  return row;
-}
+// --- Settings Schema ---
+const settingSchema = new Schema({
+  key: { type: String, required: true, unique: true },
+  value: { type: String, required: true },
+});
 
-export function getZakatRecordById(id: number): ZakatRecord | undefined {
-  const db = getDb();
-  const stmt = db.prepare('SELECT * FROM zakat_records WHERE id = ?');
-  stmt.bind([id]);
-  if (stmt.step()) {
-    const row = stmt.getAsObject() as unknown as ZakatRecord;
-    stmt.free();
-    return row;
+const SettingDoc = mongoose.model('Setting', settingSchema);
+
+// --- Seed default settings ---
+export async function seedSettings(): Promise<void> {
+  const defaults = [
+    { key: 'email_to', value: '' },
+    { key: 'gold_price_per_gram_egp', value: '3750' },
+    { key: 'usd_to_egp_rate', value: '50' },
+    { key: 'nisab_reached_date_hijri', value: '' },
+  ];
+  for (const d of defaults) {
+    await SettingDoc.updateOne({ key: d.key }, { $setOnInsert: d }, { upsert: true });
   }
-  stmt.free();
-  return undefined;
 }
 
-export function markZakatPaid(id: number): boolean {
-  const db = getDb();
-  db.run('UPDATE zakat_records SET is_paid = 1 WHERE id = ?', [id]);
-  const modified = db.getRowsModified() > 0;
-  persist();
-  return modified;
+// --- Zakat Record CRUD ---
+export async function getZakatRecords(): Promise<ZakatRecord[]> {
+  const records = await ZakatRecordDoc.find().sort({ created_at: -1 });
+  return records.map(r => r.toJSON() as ZakatRecord);
 }
 
-export function updateZakatRecordDueDates(id: number, dueDateHijri: string, dueDateGregorian: string, hijriYear: string): void {
-  const db = getDb();
-  db.run(
-    'UPDATE zakat_records SET due_date_hijri = ?, due_date_gregorian = ?, hijri_year = ? WHERE id = ?',
-    [dueDateHijri, dueDateGregorian, hijriYear, id]
-  );
-  persist();
+export async function getZakatRecordByYear(hijriYear: string): Promise<ZakatRecord | undefined> {
+  const doc = await ZakatRecordDoc.findOne({ hijri_year: hijriYear });
+  return doc ? (doc.toJSON() as ZakatRecord) : undefined;
 }
 
-export function markReminderSent(id: number): boolean {
-  const db = getDb();
-  db.run('UPDATE zakat_records SET reminder_sent = 1 WHERE id = ?', [id]);
-  const modified = db.getRowsModified() > 0;
-  persist();
-  return modified;
+export async function createZakatRecord(record: Omit<ZakatRecord, 'id' | 'created_at'>): Promise<ZakatRecord> {
+  const doc = await ZakatRecordDoc.create(record);
+  return doc.toJSON() as ZakatRecord;
 }
 
-export function deleteUnpaidRecords(): number {
-  const db = getDb();
-  db.run('DELETE FROM zakat_records WHERE is_paid = 0');
-  const deleted = db.getRowsModified();
-  persist();
-  return deleted;
+export async function getZakatRecordById(id: string): Promise<ZakatRecord | undefined> {
+  const doc = await ZakatRecordDoc.findById(id);
+  return doc ? (doc.toJSON() as ZakatRecord) : undefined;
 }
 
-export function getSetting(key: string): string | undefined {
-  const db = getDb();
-  const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
-  stmt.bind([key]);
-  if (stmt.step()) {
-    const row = stmt.getAsObject() as { value: string };
-    stmt.free();
-    return row.value;
-  }
-  stmt.free();
-  return undefined;
+export async function markZakatPaid(id: string): Promise<boolean> {
+  const result = await ZakatRecordDoc.updateOne({ _id: id }, { is_paid: true });
+  return result.modifiedCount > 0;
 }
 
-export function setSetting(key: string, value: string): void {
-  const db = getDb();
-  db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
-  persist();
+export async function markReminderSent(id: string): Promise<boolean> {
+  const result = await ZakatRecordDoc.updateOne({ _id: id }, { reminder_sent: true });
+  return result.modifiedCount > 0;
+}
+
+export async function deleteUnpaidRecords(): Promise<number> {
+  const result = await ZakatRecordDoc.deleteMany({ is_paid: false });
+  return result.deletedCount;
+}
+
+// --- Settings CRUD ---
+export async function getSetting(key: string): Promise<string | undefined> {
+  const doc = await SettingDoc.findOne({ key });
+  return doc?.value;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  await SettingDoc.updateOne({ key }, { value }, { upsert: true });
 }

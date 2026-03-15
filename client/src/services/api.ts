@@ -21,13 +21,13 @@ export const createAsset = (asset: Omit<import('../types').Asset, 'id' | 'create
     body: JSON.stringify(asset),
   });
 
-export const updateAsset = (id: number, asset: Partial<import('../types').Asset>) =>
+export const updateAsset = (id: string, asset: Partial<import('../types').Asset>) =>
   request<import('../types').Asset>(`/assets/${id}`, {
     method: 'PUT',
     body: JSON.stringify(asset),
   });
 
-export const deleteAsset = (id: number) =>
+export const deleteAsset = (id: string) =>
   request<{ success: boolean }>(`/assets/${id}`, { method: 'DELETE' });
 
 // Zakat
@@ -40,7 +40,7 @@ export const generateZakatRecords = () =>
     method: 'POST',
   });
 
-export const markZakatPaid = (id: number) =>
+export const markZakatPaid = (id: string) =>
   request<{ success: boolean }>(`/zakat/pay/${id}`, { method: 'POST' });
 
 export const sendReminder = () =>

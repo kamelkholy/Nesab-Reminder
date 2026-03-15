@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ZakatSummary } from '../types';
 import { getZakatSummary, getAssets } from '../services/api';
-import { TrendingUp, DollarSign, CheckCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, AlertTriangle } from 'lucide-react';
 
 interface Props {
   showToast: (msg: string, type: 'success' | 'error') => void;
@@ -34,11 +34,6 @@ export default function Dashboard({ showToast }: Props) {
     return <div className="page-header"><h2>Loading...</h2></div>;
   }
 
-  const hawlCompleteCount = summary?.eligibleAssets.filter(a => a.hawlComplete).length || 0;
-  const totalEligibleWealth = summary?.eligibleAssets
-    .filter(a => a.hawlComplete)
-    .reduce((sum, a) => sum + a.amountEGP, 0) || 0;
-
   return (
     <div>
       <div className="page-header">
@@ -60,26 +55,32 @@ export default function Dashboard({ showToast }: Props) {
         <div className={`stat-card ${summary?.isAboveNisab ? 'danger' : ''}`}>
           <div className="label">Zakat Due</div>
           <div className="value">{summary?.totalZakatDue.toFixed(2) || '0.00'} EGP</div>
-          <div className="sub">2.5% of eligible wealth</div>
+          <div className="sub">2.5% of total wealth</div>
         </div>
         <div className="stat-card warning">
-          <div className="label">Hawl Complete</div>
-          <div className="value">{hawlCompleteCount} / {assetCount}</div>
-          <div className="sub">Assets past one Hijri year</div>
+          <div className="label">Hawl Status</div>
+          <div className="value">{summary?.hawlComplete ? 'Complete' : 'Pending'}</div>
+          <div className="sub">
+            {summary?.hawlStartDate
+              ? `Started: ${summary.hawlStartDate}`
+              : 'Wealth has not yet reached Nisab'}
+          </div>
         </div>
-        <div className="stat-card">
-          <div className="label">Eligible Wealth (EGP)</div>
-          <div className="value">{totalEligibleWealth.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</div>
-          <div className="sub">{hawlCompleteCount} asset{hawlCompleteCount !== 1 ? 's' : ''} with hawl complete</div>
-        </div>
+        {summary?.hawlCompletionDate && !summary.hawlComplete && (
+          <div className="stat-card">
+            <div className="label">Hawl Completion</div>
+            <div className="value">{summary.hawlCompletionDate}</div>
+            <div className="sub">When Zakat becomes due</div>
+          </div>
+        )}
       </div>
 
       {summary?.isAboveNisab && summary.totalZakatDue > 0 ? (
         <div className="alert alert-warning" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <AlertTriangle size={20} />
           <div style={{ flex: 1 }}>
-            <strong>Zakat is due!</strong> Your total wealth exceeds the Nisab threshold.
-            You owe <strong>{summary.totalZakatDue.toFixed(2)} EGP</strong> in Zakat for eligible assets.
+            <strong>Zakat is due!</strong> Your total wealth exceeds the Nisab threshold and the Hawl is complete.
+            You owe <strong>{summary.totalZakatDue.toFixed(2)} EGP</strong> in Zakat.
           </div>
           <button className="btn btn-primary" onClick={() => navigate('/zakat')}>
             Pay Zakat
@@ -91,15 +92,17 @@ export default function Dashboard({ showToast }: Props) {
           <div>
             {assetCount === 0
               ? 'No assets tracked yet. Add your assets to start tracking Zakat.'
-              : 'No Zakat due at this time. Either wealth is below Nisab or Hawl has not completed.'}
+              : summary?.isAboveNisab
+                ? 'Your wealth is above Nisab but the Hawl period has not completed yet.'
+                : 'No Zakat due at this time. Your total wealth is below the Nisab threshold.'}
           </div>
         </div>
       )}
 
-      {summary && summary.eligibleAssets.length > 0 && (
+      {summary && summary.assets.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <h3>Asset Zakat Status</h3>
+            <h3>Assets Overview</h3>
           </div>
           <div className="table-wrapper">
             <table>
@@ -109,14 +112,10 @@ export default function Dashboard({ showToast }: Props) {
                   <th>Type</th>
                   <th>Value</th>
                   <th>Value (EGP)</th>
-                  <th>Hijri Acquisition</th>
-                  <th>Hawl Completion</th>
-                  <th>Status</th>
-                  <th>Zakat (EGP)</th>
                 </tr>
               </thead>
               <tbody>
-                {[...summary.eligibleAssets].sort((a, b) => a.asset.acquisition_date.localeCompare(b.asset.acquisition_date)).map((info) => (
+                {[...summary.assets].sort((a, b) => a.asset.acquisition_date.localeCompare(b.asset.acquisition_date)).map((info) => (
                   <tr key={info.asset.id}>
                     <td><strong>{info.asset.description}</strong></td>
                     <td><span className={`badge badge-${info.asset.type}`}>{info.asset.type}</span></td>
@@ -127,22 +126,6 @@ export default function Dashboard({ showToast }: Props) {
                       } {info.asset.currency}
                     </td>
                     <td>{info.amountEGP.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</td>
-                    <td>{info.hijriAcquisitionDate}</td>
-                    <td>{info.hawlCompletionDate}</td>
-                    <td>
-                      {info.hawlComplete ? (
-                        <span className="badge badge-success">Hawl Complete</span>
-                      ) : (
-                        <span className="badge badge-pending">Pending</span>
-                      )}
-                    </td>
-                    <td>
-                      {info.zakatAmount > 0 ? (
-                        <strong style={{ color: 'var(--color-primary)' }}>{info.zakatAmount.toFixed(2)} EGP</strong>
-                      ) : (
-                        <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>

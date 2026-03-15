@@ -1,5 +1,5 @@
 export interface Asset {
-  id?: number;
+  id?: string;
   type: 'cash' | 'investment' | 'stock';
   description: string;
   amount: number;
@@ -16,27 +16,25 @@ export interface ZakatSummary {
   totalWealthEGP: number;
   nisabThresholdEGP: number;
   isAboveNisab: boolean;
+  hawlComplete: boolean;
+  hawlStartDate: string | null;
+  hawlCompletionDate: string | null;
   totalZakatDue: number;
-  eligibleAssets: AssetZakatInfo[];
+  assets: AssetZakatInfo[];
   usdToEgpRate: number;
 }
 
 export interface AssetZakatInfo {
   asset: Asset;
   amountEGP: number;
-  hijriAcquisitionDate: string;
-  hawlComplete: boolean;
-  hawlCompletionDate: string;
-  zakatAmount: number;
 }
 
 export interface ZakatRecord {
-  id: number;
-  asset_id: number;
+  id: string;
   hijri_year: string;
   amount_due: number;
-  is_paid: number;
-  reminder_sent: number;
+  is_paid: boolean;
+  reminder_sent: boolean;
   due_date_hijri: string;
   due_date_gregorian: string;
   created_at: string;

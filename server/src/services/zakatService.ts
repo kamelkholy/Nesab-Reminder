@@ -1,101 +1,109 @@
-import { Asset, ZakatSummary, AssetZakatInfo } from '../types';
+import { ZakatSummary, AssetZakatInfo } from '../types';
 import { getAllAssets } from '../models/assetModel';
-import { getZakatRecordsByAsset, createZakatRecord } from '../models/zakatModel';
+import { getSetting, setSetting, getZakatRecordByYear, createZakatRecord } from '../models/zakatModel';
 import {
   isHawlComplete,
   getHawlCompletionDate,
   hijriToGregorian,
   getCurrentHijriYear,
+  getCurrentHijriDate,
   formatHijriDate,
 } from '../utils/hijri';
 
 // Nisab = 85 grams of gold
 const NISAB_GOLD_GRAMS = 85;
 
-/**
- * Convert asset amount to EGP based on its currency
- */
 function toEGP(amount: number, currency: string, usdToEgpRate: number): number {
   return currency === 'USD' ? amount * usdToEgpRate : amount;
 }
 
 /**
- * Calculate Zakat summary for all assets.
- * All calculations are done in EGP.
+ * Calculate Zakat summary based on total wealth.
+ * Hawl starts when total wealth first reaches nisab.
+ * Zakat is 2.5% of total wealth when hawl completes.
  */
-export function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: number): ZakatSummary {
-  const assets = getAllAssets();
+export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: number): Promise<ZakatSummary> {
+  const allAssets = await getAllAssets();
   const nisabThreshold = NISAB_GOLD_GRAMS * goldPricePerGramEGP;
 
-  const eligibleAssets: AssetZakatInfo[] = [];
+  const assets: AssetZakatInfo[] = [];
   let totalWealthEGP = 0;
 
-  for (const asset of assets) {
+  for (const asset of allAssets) {
     const baseAmount = asset.type === 'stock' && asset.quantity
       ? asset.quantity * asset.amount
       : asset.amount;
     const amountEGP = toEGP(baseAmount, asset.currency, usdToEgpRate);
     totalWealthEGP += amountEGP;
-    const hawlComplete = isHawlComplete(asset.hijri_date);
-    const hawlCompletionDate = getHawlCompletionDate(asset.hijri_date);
-
-    eligibleAssets.push({
-      asset,
-      amountEGP,
-      hijriAcquisitionDate: asset.hijri_date,
-      hawlComplete,
-      hawlCompletionDate: formatHijriDate(hawlCompletionDate),
-      zakatAmount: hawlComplete ? amountEGP * 0.025 : 0,
-    });
+    assets.push({ asset, amountEGP });
   }
 
-  const totalEligibleWealthEGP = eligibleAssets
-    .filter(a => a.hawlComplete)
-    .reduce((sum, a) => sum + a.amountEGP, 0);
+  const isAboveNisab = totalWealthEGP >= nisabThreshold;
+  let nisabReachedDate = await getSetting('nisab_reached_date_hijri') || null;
 
-  const isAboveNisab = totalEligibleWealthEGP >= nisabThreshold;
-  const totalZakatDue = isAboveNisab
-    ? eligibleAssets.reduce((sum, a) => sum + a.zakatAmount, 0)
-    : 0;
+  if (isAboveNisab && !nisabReachedDate) {
+    // Determine which asset historically pushed wealth above nisab
+    // by replaying assets in chronological order
+    const sorted = [...allAssets].sort((a, b) =>
+      a.acquisition_date.localeCompare(b.acquisition_date)
+    );
+    let runningTotal = 0;
+    for (const asset of sorted) {
+      const base = asset.type === 'stock' && asset.quantity
+        ? asset.quantity * asset.amount
+        : asset.amount;
+      runningTotal += toEGP(base, asset.currency, usdToEgpRate);
+      if (runningTotal >= nisabThreshold) {
+        nisabReachedDate = asset.hijri_date;
+        break;
+      }
+    }
+    nisabReachedDate = nisabReachedDate || getCurrentHijriDate();
+    await setSetting('nisab_reached_date_hijri', nisabReachedDate);
+  } else if (!isAboveNisab && nisabReachedDate) {
+    // Wealth dropped below nisab — reset hawl
+    nisabReachedDate = null;
+    await setSetting('nisab_reached_date_hijri', '');
+  }
+
+  const hawlComplete = nisabReachedDate ? isHawlComplete(nisabReachedDate) : false;
+  const hawlCompletionDate = nisabReachedDate ? getHawlCompletionDate(nisabReachedDate) : null;
+  const totalZakatDue = isAboveNisab && hawlComplete ? totalWealthEGP * 0.025 : 0;
 
   return {
     totalWealthEGP,
     nisabThresholdEGP: nisabThreshold,
     isAboveNisab,
+    hawlComplete,
+    hawlStartDate: nisabReachedDate ? formatHijriDate(nisabReachedDate) : null,
+    hawlCompletionDate: hawlCompletionDate ? formatHijriDate(hawlCompletionDate) : null,
     totalZakatDue,
-    eligibleAssets,
+    assets,
     usdToEgpRate,
   };
 }
 
 /**
- * Generate zakat records for assets whose hawl has completed
- * and don't already have a record for the current Hijri year
+ * Generate a zakat record for the current Hijri year if hawl is complete
+ * and no record exists yet.
  */
-export function generateZakatRecords(goldPricePerGramEGP: number, usdToEgpRate: number): void {
-  const summary = calculateZakat(goldPricePerGramEGP, usdToEgpRate);
-  if (!summary.isAboveNisab) return;
+export async function generateZakatRecords(goldPricePerGramEGP: number, usdToEgpRate: number): Promise<void> {
+  const summary = await calculateZakat(goldPricePerGramEGP, usdToEgpRate);
+  if (!summary.isAboveNisab || !summary.hawlComplete || summary.totalZakatDue === 0) return;
 
   const currentHijriYear = getCurrentHijriYear().toString();
+  const existing = await getZakatRecordByYear(currentHijriYear);
+  if (existing) return;
 
-  for (const info of summary.eligibleAssets) {
-    if (!info.hawlComplete || info.zakatAmount === 0) continue;
+  const nisabReachedDate = await getSetting('nisab_reached_date_hijri');
+  const hawlDate = nisabReachedDate ? getHawlCompletionDate(nisabReachedDate) : getCurrentHijriDate();
 
-    const assetId = info.asset.id!;
-    const existingRecords = getZakatRecordsByAsset(assetId);
-    const hasRecord = existingRecords.some(r => r.hijri_year === currentHijriYear);
-
-    if (!hasRecord) {
-      const hawlDate = getHawlCompletionDate(info.asset.hijri_date);
-      createZakatRecord({
-        asset_id: assetId,
-        hijri_year: currentHijriYear,
-        amount_due: info.zakatAmount,
-        is_paid: false,
-        reminder_sent: false,
-        due_date_hijri: hawlDate,
-        due_date_gregorian: hijriToGregorian(hawlDate),
-      });
-    }
-  }
+  await createZakatRecord({
+    hijri_year: currentHijriYear,
+    amount_due: summary.totalZakatDue,
+    is_paid: false,
+    reminder_sent: false,
+    due_date_hijri: hawlDate,
+    due_date_gregorian: hijriToGregorian(hawlDate),
+  });
 }

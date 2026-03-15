@@ -15,7 +15,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.15",
     "dotenv": "^16.4.5",
-    "sql.js": "^1.11.0"
+    "mongoose": "^8.8.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

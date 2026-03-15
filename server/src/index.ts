@@ -7,8 +7,8 @@ import zakatRoutes from './routes/zakat';
 import { generateZakatRecords } from './services/zakatService';
 import { calculateZakat } from './services/zakatService';
 import { sendZakatReminder } from './services/emailService';
-import { getSetting } from './models/zakatModel';
-import { ensureDb } from './database';
+import { getSetting, seedSettings } from './models/zakatModel';
+import { connectDb } from './database';
 
 dotenv.config();
 
@@ -36,14 +36,14 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // Cron job: Check zakat daily at 8:00 AM
 cron.schedule('0 8 * * *', async () => {
   console.log('[Cron] Running daily zakat check...');
-  const goldPriceEGP = parseFloat(getSetting('gold_price_per_gram_egp') || '3750');
-  const usdToEgp = parseFloat(getSetting('usd_to_egp_rate') || '50');
+  const goldPriceEGP = parseFloat((await getSetting('gold_price_per_gram_egp')) || '3750');
+  const usdToEgp = parseFloat((await getSetting('usd_to_egp_rate')) || '50');
 
-  generateZakatRecords(goldPriceEGP, usdToEgp);
-  const summary = calculateZakat(goldPriceEGP, usdToEgp);
+  await generateZakatRecords(goldPriceEGP, usdToEgp);
+  const summary = await calculateZakat(goldPriceEGP, usdToEgp);
 
   if (summary.isAboveNisab && summary.totalZakatDue > 0) {
-    const emailTo = getSetting('email_to') || process.env.EMAIL_TO || '';
+    const emailTo = (await getSetting('email_to')) || process.env.EMAIL_TO || '';
     if (emailTo) {
       await sendZakatReminder(
         {
@@ -61,7 +61,8 @@ cron.schedule('0 8 * * *', async () => {
 });
 
 // Start server after DB is ready
-ensureDb().then(() => {
+connectDb().then(async () => {
+  await seedSettings();
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });

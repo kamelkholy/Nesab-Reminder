@@ -7,7 +7,7 @@ import {
   markZakatPaid,
   sendReminder,
 } from '../services/api';
-import { Calculator, Mail, CheckCircle, RefreshCw } from 'lucide-react';
+import { Mail, CheckCircle, RefreshCw } from 'lucide-react';
 
 const HIJRI_MONTHS = [
   'Muharram', 'Safar', 'Rabi al-Awwal', 'Rabi al-Thani',
@@ -58,7 +58,7 @@ export default function ZakatPage({ showToast }: Props) {
     }
   };
 
-  const handlePay = async (id: number) => {
+  const handlePay = async (id: string) => {
     try {
       await markZakatPaid(id);
       showToast('Marked as paid', 'success');
@@ -117,19 +117,20 @@ export default function ZakatPage({ showToast }: Props) {
               <div className="label">Total Zakat Due</div>
               <div className="value">{summary.totalZakatDue.toFixed(2)} EGP</div>
               <div className="sub">
-                {summary.isAboveNisab ? 'Above Nisab - Zakat applicable' : 'Below Nisab - No Zakat due'}
+                {summary.isAboveNisab
+                  ? summary.hawlComplete
+                    ? 'Above Nisab & Hawl complete - Zakat due'
+                    : 'Above Nisab - Hawl pending'
+                  : 'Below Nisab - No Zakat due'}
               </div>
             </div>
-            <div className="stat-card">
-              <div className="label">Eligible Wealth (EGP)</div>
-              <div className="value">
-                {summary.eligibleAssets
-                  .filter(a => a.hawlComplete)
-                  .reduce((sum, a) => sum + a.amountEGP, 0)
-                  .toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP
-              </div>
+            <div className="stat-card warning">
+              <div className="label">Hawl Status</div>
+              <div className="value">{summary.hawlComplete ? 'Complete' : 'Pending'}</div>
               <div className="sub">
-                {summary.eligibleAssets.filter(a => a.hawlComplete).length} asset{summary.eligibleAssets.filter(a => a.hawlComplete).length !== 1 ? 's' : ''} with hawl complete
+                {summary.hawlStartDate
+                  ? `Started: ${summary.hawlStartDate}`
+                  : 'Wealth has not yet reached Nisab'}
               </div>
             </div>
           </div>
@@ -186,8 +187,9 @@ export default function ZakatPage({ showToast }: Props) {
         <h3 style={{ marginBottom: 12 }}>How Zakat is Calculated</h3>
         <ul style={{ paddingLeft: 20, lineHeight: 2 }}>
           <li><strong>Nisab:</strong> Your total wealth must exceed the value of 85 grams of gold.</li>
-          <li><strong>Hawl:</strong> Each asset must be held for one full Hijri (lunar) year.</li>
-          <li><strong>Rate:</strong> Zakat is 2.5% of the value of each eligible asset.</li>
+          <li><strong>Hawl:</strong> The Hawl (one Hijri year) starts when your total wealth first reaches the Nisab threshold.</li>
+          <li><strong>Rate:</strong> Zakat is 2.5% of your total wealth at the time the Hawl completes.</li>
+          <li><strong>Reset:</strong> If your wealth drops below Nisab, the Hawl resets. After paying Zakat, a new Hawl cycle begins.</li>
           <li><strong>Calendar:</strong> All dates are tracked using the Hijri calendar for accuracy.</li>
         </ul>
       </div>

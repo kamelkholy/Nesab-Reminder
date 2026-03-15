@@ -5,19 +5,19 @@ import * as assetModel from '../models/assetModel';
 const router = Router();
 
 // GET all assets
-router.get('/', (_req: Request, res: Response) => {
-  const assets = assetModel.getAllAssets();
+router.get('/', async (_req: Request, res: Response) => {
+  const assets = await assetModel.getAllAssets();
   res.json(assets);
 });
 
 // GET single asset
-router.get('/:id', param('id').isInt(), (req: Request, res: Response) => {
+router.get('/:id', param('id').isMongoId(), async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     res.status(400).json({ errors: errors.array() });
     return;
   }
-  const asset = assetModel.getAssetById(parseInt(req.params.id));
+  const asset = await assetModel.getAssetById(req.params.id);
   if (!asset) {
     res.status(404).json({ error: 'Asset not found' });
     return;
@@ -37,14 +37,14 @@ router.post(
     body('ticker').optional().isString().trim().escape(),
     body('acquisition_date').isISO8601(),
   ],
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       res.status(400).json({ errors: errors.array() });
       return;
     }
 
-    const asset = assetModel.createAsset({
+    const asset = await assetModel.createAsset({
       type: req.body.type,
       description: req.body.description,
       amount: req.body.amount,
@@ -66,7 +66,7 @@ router.post(
 router.put(
   '/:id',
   [
-    param('id').isInt(),
+    param('id').isMongoId(),
     body('type').optional().isIn(['cash', 'investment', 'stock']),
     body('description').optional().isString().trim().notEmpty().escape(),
     body('amount').optional().isFloat({ min: 0 }),
@@ -75,14 +75,14 @@ router.put(
     body('ticker').optional().isString().trim().escape(),
     body('acquisition_date').optional().isISO8601(),
   ],
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       res.status(400).json({ errors: errors.array() });
       return;
     }
 
-    const asset = assetModel.updateAsset(parseInt(req.params.id), req.body);
+    const asset = await assetModel.updateAsset(req.params.id, req.body);
     if (!asset) {
       res.status(404).json({ error: 'Asset not found' });
       return;
@@ -92,14 +92,14 @@ router.put(
 );
 
 // DELETE asset
-router.delete('/:id', param('id').isInt(), (req: Request, res: Response) => {
+router.delete('/:id', param('id').isMongoId(), async (req: Request, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     res.status(400).json({ errors: errors.array() });
     return;
   }
 
-  const deleted = assetModel.deleteAsset(parseInt(req.params.id));
+  const deleted = await assetModel.deleteAsset(req.params.id);
   if (!deleted) {
     res.status(404).json({ error: 'Asset not found' });
     return;

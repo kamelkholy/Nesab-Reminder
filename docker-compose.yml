@@ -1,0 +1,11 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: nesab-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - nesab-mongo-data:/data/db
+
+volumes:
+  nesab-mongo-data:

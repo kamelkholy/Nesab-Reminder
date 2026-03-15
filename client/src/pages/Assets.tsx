@@ -29,7 +29,7 @@ export default function Assets({ showToast }: Props) {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this asset?')) return;
     try {
       await deleteAsset(id);
@@ -135,7 +135,7 @@ function AssetTable({
 }: {
   assets: Asset[];
   onEdit: (a: Asset) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
   showStockCols?: boolean;
 }) {
   return (
