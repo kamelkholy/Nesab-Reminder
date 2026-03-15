@@ -38,7 +38,6 @@ export default function ZakatPage({ showToast }: Props) {
 
   const loadData = async () => {
     try {
-      await generateZakatRecords();
       const [s, r] = await Promise.all([getZakatSummary(), getZakatRecords()]);
       setSummary(s);
       setRecords(r);
@@ -121,53 +120,17 @@ export default function ZakatPage({ showToast }: Props) {
                 {summary.isAboveNisab ? 'Above Nisab - Zakat applicable' : 'Below Nisab - No Zakat due'}
               </div>
             </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <h3>Asset Breakdown</h3>
-            </div>
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Asset</th>
-                    <th>Type</th>
-                    <th>Value</th>
-                    <th>Value (EGP)</th>
-                    <th>Hijri Date</th>
-                    <th>Hawl Completion</th>
-                    <th>Status</th>
-                    <th>Zakat (2.5%)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.eligibleAssets.map((info) => (
-                    <tr key={info.asset.id}>
-                      <td><strong>{info.asset.description}</strong></td>
-                      <td><span className={`badge badge-${info.asset.type}`}>{info.asset.type}</span></td>
-                      <td>{info.asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {info.asset.currency}</td>
-                      <td>{info.amountEGP.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</td>
-                      <td>{info.hijriAcquisitionDate}</td>
-                      <td>{info.hawlCompletionDate}</td>
-                      <td>
-                        {info.hawlComplete ? (
-                          <span className="badge badge-success">Hawl Complete</span>
-                        ) : (
-                          <span className="badge badge-pending">Pending</span>
-                        )}
-                      </td>
-                      <td>
-                        {info.zakatAmount > 0 ? (
-                          <strong style={{ color: 'var(--color-primary)' }}>{info.zakatAmount.toFixed(2)} EGP</strong>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="stat-card">
+              <div className="label">Eligible Wealth (EGP)</div>
+              <div className="value">
+                {summary.eligibleAssets
+                  .filter(a => a.hawlComplete)
+                  .reduce((sum, a) => sum + a.amountEGP, 0)
+                  .toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP
+              </div>
+              <div className="sub">
+                {summary.eligibleAssets.filter(a => a.hawlComplete).length} asset{summary.eligibleAssets.filter(a => a.hawlComplete).length !== 1 ? 's' : ''} with hawl complete
+              </div>
             </div>
           </div>
         </>

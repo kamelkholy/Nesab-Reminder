@@ -91,6 +91,14 @@ export function markReminderSent(id: number): boolean {
   return modified;
 }
 
+export function deleteUnpaidRecords(): number {
+  const db = getDb();
+  db.run('DELETE FROM zakat_records WHERE is_paid = 0');
+  const deleted = db.getRowsModified();
+  persist();
+  return deleted;
+}
+
 export function getSetting(key: string): string | undefined {
   const db = getDb();
   const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');

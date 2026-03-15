@@ -35,6 +35,9 @@ export default function Dashboard({ showToast }: Props) {
   }
 
   const hawlCompleteCount = summary?.eligibleAssets.filter(a => a.hawlComplete).length || 0;
+  const totalEligibleWealth = summary?.eligibleAssets
+    .filter(a => a.hawlComplete)
+    .reduce((sum, a) => sum + a.amountEGP, 0) || 0;
 
   return (
     <div>
@@ -63,6 +66,11 @@ export default function Dashboard({ showToast }: Props) {
           <div className="label">Hawl Complete</div>
           <div className="value">{hawlCompleteCount} / {assetCount}</div>
           <div className="sub">Assets past one Hijri year</div>
+        </div>
+        <div className="stat-card">
+          <div className="label">Eligible Wealth (EGP)</div>
+          <div className="value">{totalEligibleWealth.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</div>
+          <div className="sub">{hawlCompleteCount} asset{hawlCompleteCount !== 1 ? 's' : ''} with hawl complete</div>
         </div>
       </div>
 
@@ -108,7 +116,7 @@ export default function Dashboard({ showToast }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {summary.eligibleAssets.map((info) => (
+                {[...summary.eligibleAssets].sort((a, b) => a.asset.acquisition_date.localeCompare(b.asset.acquisition_date)).map((info) => (
                   <tr key={info.asset.id}>
                     <td><strong>{info.asset.description}</strong></td>
                     <td><span className={`badge badge-${info.asset.type}`}>{info.asset.type}</span></td>

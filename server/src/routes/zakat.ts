@@ -60,6 +60,12 @@ router.post('/pay/:id', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// DELETE unpaid zakat records
+router.delete('/records/unpaid', (_req: Request, res: Response) => {
+  const deleted = zakatModel.deleteUnpaidRecords();
+  res.json({ success: true, deleted });
+});
+
 // POST send email reminder
 router.post('/remind', async (_req: Request, res: Response) => {
   const { goldPriceEGP, usdToEgp } = getZakatParams();

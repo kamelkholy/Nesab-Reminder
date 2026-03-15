@@ -49,7 +49,11 @@ export function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: number
     });
   }
 
-  const isAboveNisab = totalWealthEGP >= nisabThreshold;
+  const totalEligibleWealthEGP = eligibleAssets
+    .filter(a => a.hawlComplete)
+    .reduce((sum, a) => sum + a.amountEGP, 0);
+
+  const isAboveNisab = totalEligibleWealthEGP >= nisabThreshold;
   const totalZakatDue = isAboveNisab
     ? eligibleAssets.reduce((sum, a) => sum + a.zakatAmount, 0)
     : 0;
