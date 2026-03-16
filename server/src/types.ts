@@ -39,6 +39,7 @@ export interface ZakatSummary {
   hawlComplete: boolean;
   hawlStartDate: string | null;
   hawlCompletionDate: string | null;
+  hawlCompletionDateRaw: string | null;
   totalZakatDue: number;
   assets: AssetZakatInfo[];
   usdToEgpRate: number;

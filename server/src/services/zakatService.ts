@@ -93,6 +93,7 @@ export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: 
     hawlComplete,
     hawlStartDate: nisabReachedDate ? formatHijriDate(nisabReachedDate) : null,
     hawlCompletionDate: hawlCompletionDate ? formatHijriDate(hawlCompletionDate) : null,
+    hawlCompletionDateRaw: hawlCompletionDate || null,
     totalZakatDue,
     assets,
     usdToEgpRate,

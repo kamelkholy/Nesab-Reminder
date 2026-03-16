@@ -279,16 +279,19 @@ export default function SettingsPage({ showToast }: Props) {
       <div className="card">
         <h3 style={{ marginBottom: 12 }}>Email Configuration</h3>
         <p style={{ color: 'var(--color-text-secondary)', lineHeight: 1.8 }}>
-          To enable email reminders, configure the following environment variables in the server's <code>.env</code> file:
+          Email reminders are sent via <strong>Azure Communication Services</strong>. Configure the following
+          environment variables in the server's <code>.env</code> file:
         </p>
         <div style={{ background: '#f8faf8', padding: 16, borderRadius: 8, marginTop: 12, fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.8 }}>
-          SMTP_HOST=smtp.gmail.com<br />
-          SMTP_PORT=587<br />
-          SMTP_USER=your-email@gmail.com<br />
-          SMTP_PASS=your-app-password<br />
+          ACS_CONNECTION_STRING=endpoint=https://&lt;your-resource&gt;.communication.azure.com/;accesskey=&lt;key&gt;<br />
+          ACS_SENDER_ADDRESS=DoNotReply@&lt;your-domain&gt;.azurecomm.net
         </div>
-        <p style={{ color: 'var(--color-text-secondary)', marginTop: 12, fontSize: '0.85rem' }}>
-          For Gmail, you need to use an App Password. Go to Google Account → Security → 2-Step Verification → App passwords.
+        <p style={{ color: 'var(--color-text-secondary)', marginTop: 12, fontSize: '0.85rem', lineHeight: 1.8 }}>
+          <strong>Setup steps:</strong><br />
+          1. Create an Azure Communication Services resource in the Azure Portal.<br />
+          2. Go to <em>Email &gt; Domains</em> and add a domain (or use the free Azure subdomain).<br />
+          3. Copy the <em>Connection String</em> from <em>Keys</em> in the resource.<br />
+          4. Copy the sender address (e.g., DoNotReply@&lt;id&gt;.azurecomm.net) from the domain config.
         </p>
       </div>
 

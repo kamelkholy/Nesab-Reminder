@@ -48,7 +48,7 @@ cron.schedule('0 8 * * *', async () => {
     try {
       const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
       if (fxRes.ok) {
-        const fxData = await fxRes.json();
+        const fxData: any = await fxRes.json();
         const rate = fxData.rates?.EGP;
         if (rate && usdEgpMode === 'auto') {
           usdToEgp = Math.round(rate * 100) / 100;
@@ -57,7 +57,7 @@ cron.schedule('0 8 * * *', async () => {
         if (rate && goldPriceMode === 'auto') {
           const goldRes = await fetch('https://api.gold-api.com/price/XAU');
           if (goldRes.ok) {
-            const goldData = await goldRes.json();
+            const goldData: any = await goldRes.json();
             if (goldData?.price) {
               goldPriceEGP = Math.round((goldData.price / 31.1035) * rate * 100) / 100;
               await setSetting('gold_price_per_gram_egp', goldPriceEGP.toString());
@@ -81,7 +81,7 @@ cron.schedule('0 8 * * *', async () => {
           `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(stock.ticker!)}?range=1d&interval=1d`
         );
         if (res.ok) {
-          const data = await res.json();
+          const data: any = await res.json();
           const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
           if (typeof price === 'number' && stock.id) {
             await updateAsset(stock.id, { amount: Math.round(price * 1000) / 1000 });
@@ -96,21 +96,51 @@ cron.schedule('0 8 * * *', async () => {
   await generateZakatRecords(goldPriceEGP, usdToEgp);
   const summary = await calculateZakat(goldPriceEGP, usdToEgp);
 
-  if (summary.isAboveNisab && summary.totalZakatDue > 0) {
-    const emailTo = (await getSetting('email_to')) || process.env.EMAIL_TO || '';
-    if (emailTo) {
-      await sendZakatReminder(
-        {
-          host: process.env.SMTP_HOST || 'smtp.gmail.com',
-          port: parseInt(process.env.SMTP_PORT || '587'),
-          user: process.env.SMTP_USER || '',
-          pass: process.env.SMTP_PASS || '',
-        },
-        emailTo,
-        summary
-      );
-      console.log('[Cron] Zakat reminder email sent.');
-    }
+  const emailTo = (await getSetting('email_to')) || process.env.EMAIL_TO || '';
+  if (!emailTo) return;
+
+  const prevAboveNisab = (await getSetting('cron_prev_above_nisab')) === 'true';
+  const prevHawlStart = (await getSetting('cron_prev_hawl_start')) || '';
+  const lastEmailMonth = (await getSetting('cron_last_email_month')) || '';
+
+  let shouldSendEmail = false;
+  let reason = '';
+
+  // 1. Send when wealth first reaches Nisab
+  if (summary.isAboveNisab && !prevAboveNisab) {
+    shouldSendEmail = true;
+    reason = 'Wealth first reached Nisab';
+  }
+
+  // 2. Send when Hawl resets (new cycle started — hawl start date changed)
+  const currentHawlStart = summary.hawlStartDate || '';
+  if (currentHawlStart && prevHawlStart && currentHawlStart !== prevHawlStart) {
+    shouldSendEmail = true;
+    reason = 'Hawl cycle reset';
+  }
+
+  // 3. Send monthly when zakat is due (hawl complete & above nisab)
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  if (summary.isAboveNisab && summary.totalZakatDue > 0 && lastEmailMonth !== currentMonth) {
+    shouldSendEmail = true;
+    reason = 'Monthly Zakat reminder';
+  }
+
+  // Update tracked state
+  await setSetting('cron_prev_above_nisab', summary.isAboveNisab.toString());
+  await setSetting('cron_prev_hawl_start', currentHawlStart);
+
+  if (shouldSendEmail) {
+    await sendZakatReminder(
+      process.env.ACS_CONNECTION_STRING || '',
+      process.env.ACS_SENDER_ADDRESS || '',
+      emailTo,
+      summary
+    );
+    await setSetting('cron_last_email_month', currentMonth);
+    console.log(`[Cron] Zakat reminder email sent. Reason: ${reason}`);
+  } else {
+    console.log('[Cron] No email needed today.');
   }
 });
 

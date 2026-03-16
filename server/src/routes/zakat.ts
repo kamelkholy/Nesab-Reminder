@@ -12,13 +12,13 @@ async function fetchGoldPriceFromApi(): Promise<number | null> {
   try {
     const goldRes = await fetch('https://api.gold-api.com/price/XAU');
     if (!goldRes.ok) return null;
-    const goldData = await goldRes.json();
+    const goldData: any = await goldRes.json();
     const goldPerOzUSD = goldData?.price;
     if (!goldPerOzUSD) return null;
 
     const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
     if (!fxRes.ok) return null;
-    const fxData = await fxRes.json();
+    const fxData: any = await fxRes.json();
     const usdToEgp = fxData.rates?.EGP;
     if (!usdToEgp) return null;
 
@@ -32,7 +32,7 @@ async function fetchExchangeRateFromApi(): Promise<number | null> {
   try {
     const response = await fetch('https://open.er-api.com/v6/latest/USD');
     if (!response.ok) return null;
-    const data = await response.json();
+    const data: any = await response.json();
     const rate = data.rates?.EGP;
     return rate ? Math.round(rate * 100) / 100 : null;
   } catch {
@@ -46,7 +46,7 @@ async function fetchStockPriceFromApi(ticker: string): Promise<number | null> {
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d&interval=1d`
     );
     if (!res.ok) return null;
-    const data = await res.json();
+    const data: any = await res.json();
     const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
     return typeof price === 'number' ? Math.round(price * 1000) / 1000 : null;
   } catch {
@@ -168,13 +168,16 @@ router.post('/remind', async (_req: Request, res: Response) => {
     return;
   }
 
+  const connectionString = process.env.ACS_CONNECTION_STRING || '';
+  const senderAddress = process.env.ACS_SENDER_ADDRESS || '';
+  if (!connectionString || !senderAddress) {
+    res.status(400).json({ error: 'Azure Communication Services not configured' });
+    return;
+  }
+
   const sent = await sendZakatReminder(
-    {
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      user: process.env.SMTP_USER || '',
-      pass: process.env.SMTP_PASS || '',
-    },
+    connectionString,
+    senderAddress,
     emailTo,
     summary
   );
@@ -221,7 +224,7 @@ router.get('/fetch-exchange-rate', async (_req: Request, res: Response) => {
   try {
     const response = await fetch('https://open.er-api.com/v6/latest/USD');
     if (!response.ok) throw new Error('API request failed');
-    const data = await response.json();
+    const data: any = await response.json();
     const rate = data.rates?.EGP;
     if (!rate) throw new Error('EGP rate not found in response');
     res.json({ rate: Math.round(rate * 100) / 100 });
@@ -236,14 +239,14 @@ router.get('/fetch-gold-price', async (_req: Request, res: Response) => {
     // Fetch gold spot price in USD per troy ounce from gold-api.com
     const goldRes = await fetch('https://api.gold-api.com/price/XAU');
     if (!goldRes.ok) throw new Error('Gold API request failed');
-    const goldData = await goldRes.json();
+    const goldData: any = await goldRes.json();
     const goldPerOzUSD = goldData?.price;
     if (!goldPerOzUSD) throw new Error('Gold price not found in response');
 
     // Fetch USD to EGP rate
     const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
     if (!fxRes.ok) throw new Error('Exchange rate API failed');
-    const fxData = await fxRes.json();
+    const fxData: any = await fxRes.json();
     const usdToEgp = fxData.rates?.EGP;
     if (!usdToEgp) throw new Error('EGP rate not found');
 

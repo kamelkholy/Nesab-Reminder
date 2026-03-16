@@ -1,45 +1,54 @@
-import nodemailer from 'nodemailer';
+import { EmailClient } from '@azure/communication-email';
 import { ZakatSummary } from '../types';
-import { formatHijriDate, getCurrentHijriDate } from '../utils/hijri';
-
-interface EmailOptions {
-  host: string;
-  port: number;
-  user: string;
-  pass: string;
-}
-
-function createTransporter(options: EmailOptions) {
-  return nodemailer.createTransport({
-    host: options.host,
-    port: options.port,
-    secure: options.port === 465,
-    auth: {
-      user: options.user,
-      pass: options.pass,
-    },
-  });
-}
+import { formatHijriDate, getCurrentHijriDate, daysUntilHawlCompletion } from '../utils/hijri';
 
 export async function sendZakatReminder(
-  emailOptions: EmailOptions,
+  connectionString: string,
+  senderAddress: string,
   to: string,
   summary: ZakatSummary
 ): Promise<boolean> {
   try {
-    const transporter = createTransporter(emailOptions);
+    const client = new EmailClient(connectionString);
 
-    const assetList = summary.assets
-      .map(
-        a =>
-          `<tr>
-            <td style="padding:8px;border:1px solid #ddd">${a.asset.description}</td>
-            <td style="padding:8px;border:1px solid #ddd">${a.asset.type}</td>
-            <td style="padding:8px;border:1px solid #ddd">${a.asset.amount.toLocaleString()} ${a.asset.currency}</td>
-            <td style="padding:8px;border:1px solid #ddd">${a.amountEGP.toLocaleString()} EGP</td>
-          </tr>`
-      )
-      .join('');
+    const zakatableAssets = summary.assets.filter(a => !a.excludedFromZakat);
+    const excludedAssets = summary.assets.filter(a => a.excludedFromZakat);
+
+    const makeAssetRows = (assets: typeof summary.assets) =>
+      assets
+        .map(
+          a =>
+            `<tr>
+              <td style="padding:8px;border:1px solid #ddd">${a.asset.description}</td>
+              <td style="padding:8px;border:1px solid #ddd">${a.asset.type}</td>
+              <td style="padding:8px;border:1px solid #ddd">${(a.asset.type === 'stock' && a.asset.quantity ? (a.asset.quantity * a.asset.amount).toLocaleString() : a.asset.amount.toLocaleString())} ${a.asset.currency}</td>
+              <td style="padding:8px;border:1px solid #ddd">${a.amountEGP.toLocaleString()} EGP</td>
+            </tr>`
+        )
+        .join('');
+
+    const daysRemaining = summary.hawlComplete
+      ? 0
+      : summary.hawlCompletionDateRaw
+        ? daysUntilHawlCompletion(summary.hawlCompletionDateRaw)
+        : null;
+
+    const hawlStatusText = summary.hawlComplete
+      ? '✅ Hawl is complete — Zakat is due now.'
+      : daysRemaining !== null
+        ? `⏳ ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining until Hawl completion (${summary.hawlCompletionDate}).`
+        : 'Hawl has not started yet.';
+
+    const tableHeader = `
+      <table style="border-collapse:collapse;width:100%">
+        <thead>
+          <tr style="background:#1a7a4c;color:white">
+            <th style="padding:8px;border:1px solid #ddd">Description</th>
+            <th style="padding:8px;border:1px solid #ddd">Type</th>
+            <th style="padding:8px;border:1px solid #ddd">Value</th>
+            <th style="padding:8px;border:1px solid #ddd">Value (EGP)</th>
+          </tr>
+        </thead>`;
 
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
@@ -52,23 +61,24 @@ export async function sendZakatReminder(
           <p><strong>Total Wealth:</strong> ${summary.totalWealthEGP.toLocaleString()} EGP</p>
           <p><strong>Nisab Threshold:</strong> ${summary.nisabThresholdEGP.toLocaleString()} EGP</p>
           <p><strong>Hawl Started:</strong> ${summary.hawlStartDate || 'N/A'}</p>
+          <p><strong>Hawl Status:</strong> ${hawlStatusText}</p>
           <p><strong>Total Zakat Due:</strong> <span style="color:#1a7a4c;font-size:1.2em"><strong>${summary.totalZakatDue.toFixed(2)} EGP</strong></span></p>
         </div>
 
-        <h3>Your Assets:</h3>
-        <table style="border-collapse:collapse;width:100%">
-          <thead>
-            <tr style="background:#1a7a4c;color:white">
-              <th style="padding:8px;border:1px solid #ddd">Description</th>
-              <th style="padding:8px;border:1px solid #ddd">Type</th>
-              <th style="padding:8px;border:1px solid #ddd">Value</th>
-              <th style="padding:8px;border:1px solid #ddd">Value (EGP)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${assetList}
-          </tbody>
-        </table>
+        <h3>Assets Due This Hawl (${zakatableAssets.length})</h3>
+        ${zakatableAssets.length > 0 ? `
+          ${tableHeader}
+            <tbody>${makeAssetRows(zakatableAssets)}</tbody>
+          </table>
+        ` : '<p style="color:#666">No assets due this Hawl.</p>'}
+
+        ${excludedAssets.length > 0 ? `
+          <h3 style="margin-top:20px">Assets Excluded from This Hawl (${excludedAssets.length})</h3>
+          <p style="color:#666;font-size:0.9em">These assets were acquired after the Hawl completion date and will be included in the next cycle.</p>
+          ${tableHeader}
+            <tbody>${makeAssetRows(excludedAssets)}</tbody>
+          </table>
+        ` : ''}
 
         <p style="margin-top:16px;color:#666;font-size:0.9em">
           Zakat is calculated at 2.5% of total wealth once it has exceeded the Nisab threshold
@@ -79,16 +89,21 @@ export async function sendZakatReminder(
       </div>
     `;
 
-    await transporter.sendMail({
-      from: `"Nesab Reminder" <${emailOptions.user}>`,
-      to,
-      subject: `Zakat Reminder - ${summary.totalZakatDue.toFixed(2)} EGP Due`,
-      html,
+    const poller = await client.beginSend({
+      senderAddress,
+      content: {
+        subject: `Zakat Reminder - ${summary.totalZakatDue.toFixed(2)} EGP Due`,
+        html,
+      },
+      recipients: {
+        to: [{ address: to }],
+      },
     });
 
-    return true;
+    const result = await poller.pollUntilDone();
+    return result.status === 'Succeeded';
   } catch (error) {
-    console.error('Failed to send email:', error);
+    console.error('Failed to send email via Azure Communication Services:', error);
     return false;
   }
 }

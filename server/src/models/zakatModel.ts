@@ -1,8 +1,18 @@
 import mongoose, { Schema } from 'mongoose';
 import { ZakatRecord } from '../types';
 
+interface IZakatRecord {
+  hijri_year: string;
+  amount_due: number;
+  is_paid: boolean;
+  reminder_sent: boolean;
+  due_date_hijri: string;
+  due_date_gregorian: string;
+  created_at?: Date;
+}
+
 // --- Zakat Record Schema ---
-const zakatRecordSchema = new Schema(
+const zakatRecordSchema = new Schema<IZakatRecord>(
   {
     hijri_year: { type: String, required: true },
     amount_due: { type: Number, required: true },
@@ -15,7 +25,7 @@ const zakatRecordSchema = new Schema(
     timestamps: { createdAt: 'created_at', updatedAt: false },
     toJSON: {
       virtuals: true,
-      transform: (_doc, ret) => {
+      transform: (_doc: any, ret: any) => {
         ret.id = ret._id.toString();
         delete ret._id;
         delete ret.__v;
@@ -25,7 +35,7 @@ const zakatRecordSchema = new Schema(
   }
 );
 
-export const ZakatRecordDoc = mongoose.model('ZakatRecord', zakatRecordSchema);
+export const ZakatRecordDoc = mongoose.model<IZakatRecord>('ZakatRecord', zakatRecordSchema);
 
 // --- Settings Schema ---
 const settingSchema = new Schema({
@@ -45,6 +55,9 @@ export async function seedSettings(): Promise<void> {
     { key: 'usd_egp_mode', value: 'manual' },
     { key: 'stock_price_mode', value: 'manual' },
     { key: 'nisab_reached_date_hijri', value: '' },
+    { key: 'cron_prev_above_nisab', value: 'false' },
+    { key: 'cron_prev_hawl_start', value: '' },
+    { key: 'cron_last_email_month', value: '' },
   ];
   for (const d of defaults) {
     await SettingDoc.updateOne({ key: d.key }, { $setOnInsert: d }, { upsert: true });

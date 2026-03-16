@@ -92,3 +92,15 @@ export function formatHijriDate(hijriDate: string): string {
 export function getTodayGregorian(): string {
   return momentHijri().format('YYYY-MM-DD');
 }
+
+/**
+ * Calculate the number of Gregorian days remaining until hawl completion.
+ * Returns 0 if hawl is already complete, otherwise a positive number.
+ */
+export function daysUntilHawlCompletion(hawlCompletionHijri: string): number {
+  const completionGregorian = hijriToGregorian(hawlCompletionHijri);
+  const today = momentHijri();
+  const completionDate = momentHijri(completionGregorian, 'YYYY-MM-DD');
+  const diff = completionDate.diff(today, 'days');
+  return diff > 0 ? diff : 0;
+}
