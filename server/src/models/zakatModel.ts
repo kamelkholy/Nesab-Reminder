@@ -41,6 +41,9 @@ export async function seedSettings(): Promise<void> {
     { key: 'email_to', value: '' },
     { key: 'gold_price_per_gram_egp', value: '3750' },
     { key: 'usd_to_egp_rate', value: '50' },
+    { key: 'gold_price_mode', value: 'manual' },
+    { key: 'usd_egp_mode', value: 'manual' },
+    { key: 'stock_price_mode', value: 'manual' },
     { key: 'nisab_reached_date_hijri', value: '' },
   ];
   for (const d of defaults) {

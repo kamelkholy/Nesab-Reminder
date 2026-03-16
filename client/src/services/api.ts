@@ -57,3 +57,17 @@ export const updateSettings = (settings: Partial<import('../types').Settings>) =
     method: 'PUT',
     body: JSON.stringify(settings),
   });
+
+export const fetchExchangeRate = () =>
+  request<{ rate: number }>('/zakat/fetch-exchange-rate');
+
+export const fetchGoldPrice = () =>
+  request<{ price_per_gram_egp: number; gold_per_oz_usd: number; usd_to_egp: number }>('/zakat/fetch-gold-price');
+
+export const fetchStockPrice = (ticker: string) =>
+  request<{ ticker: string; price: number }>(`/zakat/fetch-stock-price/${encodeURIComponent(ticker)}`);
+
+export const refreshAllStockPrices = () =>
+  request<{ success: boolean; results: { ticker: string; price: number | null; updated: boolean }[] }>('/zakat/refresh-stock-prices', {
+    method: 'POST',
+  });

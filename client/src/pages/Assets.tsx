@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Asset, ZakatSummary } from '../types';
-import { getAssets, deleteAsset, getZakatSummary } from '../services/api';
+import { Asset, ZakatSummary, Settings } from '../types';
+import { getAssets, deleteAsset, getZakatSummary, getSettings, refreshAllStockPrices } from '../services/api';
 import AssetForm from '../components/AssetForm';
 import { formatHijriDate } from '../utils/hijri';
-import { Plus, Edit2, Trash2, Wallet } from 'lucide-react';
+import { Plus, Edit2, Trash2, Wallet, RefreshCw } from 'lucide-react';
 
 interface Props {
   showToast: (msg: string, type: 'success' | 'error') => void;
@@ -15,6 +15,8 @@ export default function Assets({ showToast }: Props) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | undefined>();
+  const [stockPriceMode, setStockPriceMode] = useState<'manual' | 'auto'>('manual');
+  const [refreshingStocks, setRefreshingStocks] = useState(false);
 
   useEffect(() => {
     loadAssets();
@@ -22,8 +24,9 @@ export default function Assets({ showToast }: Props) {
 
   const loadAssets = async () => {
     try {
-      const [data, summary] = await Promise.all([getAssets(), getZakatSummary()]);
+      const [data, summary, settings] = await Promise.all([getAssets(), getZakatSummary(), getSettings()]);
       setAssets(data);
+      setStockPriceMode(settings.stock_price_mode || 'manual');
       const ids = new Set<string>(
         summary.assets
           .filter(a => !a.excludedFromZakat && a.asset.id)
@@ -56,6 +59,24 @@ export default function Assets({ showToast }: Props) {
   const handleAdd = () => {
     setEditingAsset(undefined);
     setShowForm(true);
+  };
+
+  const handleRefreshStockPrices = async () => {
+    setRefreshingStocks(true);
+    try {
+      const result = await refreshAllStockPrices();
+      const updated = result.results.filter(r => r.updated).length;
+      const failed = result.results.filter(r => !r.updated).length;
+      showToast(
+        `Updated ${updated} stock price${updated !== 1 ? 's' : ''}${failed > 0 ? `, ${failed} failed` : ''}`,
+        failed > 0 && updated === 0 ? 'error' : 'success'
+      );
+      loadAssets();
+    } catch (err) {
+      showToast('Failed to refresh stock prices', 'error');
+    } finally {
+      setRefreshingStocks(false);
+    }
   };
 
   if (loading) {
@@ -115,7 +136,19 @@ export default function Assets({ showToast }: Props) {
             <div className="card">
               <div className="card-header">
                 <h3>Stocks</h3>
-                <span className="badge badge-stock">{stockAssets.length} items</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {stockPriceMode === 'auto' && (
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={handleRefreshStockPrices}
+                      disabled={refreshingStocks}
+                    >
+                      <RefreshCw size={14} className={refreshingStocks ? 'spin' : ''} />
+                      {refreshingStocks ? 'Refreshing...' : 'Refresh Prices'}
+                    </button>
+                  )}
+                  <span className="badge badge-stock">{stockAssets.length} items</span>
+                </div>
               </div>
               <AssetTable assets={stockAssets} onEdit={handleEdit} onDelete={handleDelete} showStockCols zakatableIds={zakatableAssetIds} />
             </div>

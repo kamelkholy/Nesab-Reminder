@@ -46,4 +46,7 @@ export interface Settings {
   email_to: string;
   gold_price_per_gram_egp: string;
   usd_to_egp_rate: string;
+  gold_price_mode: 'manual' | 'auto';
+  usd_egp_mode: 'manual' | 'auto';
+  stock_price_mode: 'manual' | 'auto';
 }
