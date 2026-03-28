@@ -4,7 +4,7 @@ import { calculateZakat, generateZakatRecords } from '../services/zakatService';
 import { sendZakatReminder } from '../services/emailService';
 import * as zakatModel from '../models/zakatModel';
 import { getAllAssets, updateAsset } from '../models/assetModel';
-import { getCurrentHijriDate } from '../utils/hijri';
+import { getCurrentHijriDate, gregorianToHijri } from '../utils/hijri';
 
 const router = Router();
 
@@ -60,36 +60,44 @@ async function updateStockPricesIfAuto(): Promise<void> {
 
   const assets = await getAllAssets();
   const stocks = assets.filter(a => a.type === 'stock' && a.ticker);
+  if (stocks.length === 0) return;
 
-  for (const stock of stocks) {
-    const price = await fetchStockPriceFromApi(stock.ticker!);
-    if (price !== null && stock.id) {
+  const uniqueTickers = [...new Set(stocks.map(s => s.ticker!))];
+  const priceEntries = await Promise.all(
+    uniqueTickers.map(async (ticker) => [ticker, await fetchStockPriceFromApi(ticker)] as const)
+  );
+  const priceMap = new Map(priceEntries);
+
+  await Promise.all(stocks.map(async (stock) => {
+    const price = priceMap.get(stock.ticker!);
+    if (price !== null && price !== undefined && stock.id) {
       await updateAsset(stock.id, { amount: price });
     }
-  }
+  }));
 }
 
 async function getZakatParams() {
-  const goldPriceMode = (await zakatModel.getSetting('gold_price_mode')) || 'manual';
-  const usdEgpMode = (await zakatModel.getSetting('usd_egp_mode')) || 'manual';
+  const [goldPriceMode, usdEgpMode, goldPriceSetting, usdRateSetting] = await Promise.all([
+    zakatModel.getSetting('gold_price_mode'),
+    zakatModel.getSetting('usd_egp_mode'),
+    zakatModel.getSetting('gold_price_per_gram_egp'),
+    zakatModel.getSetting('usd_to_egp_rate'),
+  ]);
 
-  let goldPriceEGP = parseFloat((await zakatModel.getSetting('gold_price_per_gram_egp')) || '3750');
-  let usdToEgp = parseFloat((await zakatModel.getSetting('usd_to_egp_rate')) || '50');
+  let goldPriceEGP = parseFloat(goldPriceSetting || '3750');
+  let usdToEgp = parseFloat(usdRateSetting || '50');
 
-  if (goldPriceMode === 'auto') {
-    const fetched = await fetchGoldPriceFromApi();
-    if (fetched !== null) {
-      goldPriceEGP = fetched;
-      await zakatModel.setSetting('gold_price_per_gram_egp', fetched.toString());
-    }
+  const fetchGold = (goldPriceMode || 'manual') === 'auto' ? fetchGoldPriceFromApi() : Promise.resolve(null);
+  const fetchRate = (usdEgpMode || 'manual') === 'auto' ? fetchExchangeRateFromApi() : Promise.resolve(null);
+  const [fetchedGold, fetchedRate] = await Promise.all([fetchGold, fetchRate]);
+
+  if (fetchedGold !== null) {
+    goldPriceEGP = fetchedGold;
+    await zakatModel.setSetting('gold_price_per_gram_egp', fetchedGold.toString());
   }
-
-  if (usdEgpMode === 'auto') {
-    const fetched = await fetchExchangeRateFromApi();
-    if (fetched !== null) {
-      usdToEgp = fetched;
-      await zakatModel.setSetting('usd_to_egp_rate', fetched.toString());
-    }
+  if (fetchedRate !== null) {
+    usdToEgp = fetchedRate;
+    await zakatModel.setSetting('usd_to_egp_rate', fetchedRate.toString());
   }
 
   return { goldPriceEGP, usdToEgp };
@@ -97,9 +105,8 @@ async function getZakatParams() {
 
 // GET Zakat summary/calculation
 router.get('/summary', async (_req: Request, res: Response) => {
-  await updateStockPricesIfAuto();
-  const { goldPriceEGP, usdToEgp } = await getZakatParams();
-  const summary = await calculateZakat(goldPriceEGP, usdToEgp);
+  const [, params] = await Promise.all([updateStockPricesIfAuto(), getZakatParams()]);
+  const summary = await calculateZakat(params.goldPriceEGP, params.usdToEgp);
   res.json(summary);
 });
 
@@ -118,7 +125,7 @@ router.post('/generate', async (_req: Request, res: Response) => {
   res.json({ success: true, records });
 });
 
-// POST mark zakat as paid
+// POST mark zakat as paid (full)
 router.post('/pay/:id', async (req: Request, res: Response) => {
   const id = req.params.id;
   const record = await zakatModel.getZakatRecordById(id);
@@ -131,6 +138,68 @@ router.post('/pay/:id', async (req: Request, res: Response) => {
   // Reset hawl: set nisab_reached_date to current date so a new cycle starts
   await zakatModel.setSetting('nisab_reached_date_hijri', getCurrentHijriDate());
 
+  res.json({ success: true });
+});
+
+// POST add a partial payment to a zakat record
+router.post(
+  '/records/:id/payments',
+  [
+    param('id').isString().trim().notEmpty(),
+    body('amount').isFloat({ gt: 0 }),
+    body('date_gregorian').isString().trim().notEmpty(),
+    body('note').optional().isString().trim(),
+  ],
+  async (req: Request, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ errors: errors.array() });
+      return;
+    }
+    const record = await zakatModel.getZakatRecordById(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: 'Zakat record not found' });
+      return;
+    }
+    const { amount, date_gregorian, note } = req.body;
+    const date_hijri = gregorianToHijri(date_gregorian);
+
+    const payment = await zakatModel.addZakatPayment({
+      zakat_record_id: req.params.id,
+      amount,
+      date_hijri,
+      date_gregorian,
+      note: note || '',
+    });
+
+    // If fully paid, reset hawl
+    const updated = await zakatModel.getZakatRecordById(req.params.id);
+    if (updated?.is_paid) {
+      await zakatModel.setSetting('nisab_reached_date_hijri', getCurrentHijriDate());
+    }
+
+    res.json({ success: true, payment });
+  }
+);
+
+// GET payments for a zakat record
+router.get('/records/:id/payments', async (req: Request, res: Response) => {
+  const record = await zakatModel.getZakatRecordById(req.params.id);
+  if (!record) {
+    res.status(404).json({ error: 'Zakat record not found' });
+    return;
+  }
+  const payments = await zakatModel.getPaymentsByRecordId(req.params.id);
+  res.json(payments);
+});
+
+// DELETE a specific zakat payment
+router.delete('/payments/:paymentId', async (req: Request, res: Response) => {
+  const deleted = await zakatModel.deleteZakatPayment(req.params.paymentId);
+  if (!deleted) {
+    res.status(404).json({ error: 'Payment not found' });
+    return;
+  }
   res.json({ success: true });
 });
 

@@ -32,14 +32,26 @@ export interface AssetZakatInfo {
   excludedFromZakat: boolean;
 }
 
+export interface ZakatPayment {
+  id: string;
+  zakat_record_id: string;
+  amount: number;
+  date_hijri: string;
+  date_gregorian: string;
+  note?: string;
+  created_at: string;
+}
+
 export interface ZakatRecord {
   id: string;
   hijri_year: string;
   amount_due: number;
+  amount_paid: number;
   is_paid: boolean;
   reminder_sent: boolean;
   due_date_hijri: string;
   due_date_gregorian: string;
+  payments: ZakatPayment[];
   created_at: string;
 }
 

@@ -1,5 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
-import { ZakatRecord } from '../types';
+import { ZakatRecord, ZakatPayment } from '../types';
 
 interface IZakatRecord {
   hijri_year: string;
@@ -8,6 +8,15 @@ interface IZakatRecord {
   reminder_sent: boolean;
   due_date_hijri: string;
   due_date_gregorian: string;
+  created_at?: Date;
+}
+
+interface IZakatPayment {
+  zakat_record_id: mongoose.Types.ObjectId;
+  amount: number;
+  date_hijri: string;
+  date_gregorian: string;
+  note?: string;
   created_at?: Date;
 }
 
@@ -37,6 +46,32 @@ const zakatRecordSchema = new Schema<IZakatRecord>(
 
 export const ZakatRecordDoc = mongoose.model<IZakatRecord>('ZakatRecord', zakatRecordSchema);
 
+// --- Zakat Payment Schema ---
+const zakatPaymentSchema = new Schema<IZakatPayment>(
+  {
+    zakat_record_id: { type: Schema.Types.ObjectId, ref: 'ZakatRecord', required: true },
+    amount: { type: Number, required: true },
+    date_hijri: { type: String, required: true },
+    date_gregorian: { type: String, required: true },
+    note: { type: String, default: '' },
+  },
+  {
+    timestamps: { createdAt: 'created_at', updatedAt: false },
+    toJSON: {
+      virtuals: true,
+      transform: (_doc: any, ret: any) => {
+        ret.id = ret._id.toString();
+        ret.zakat_record_id = ret.zakat_record_id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  }
+);
+
+export const ZakatPaymentDoc = mongoose.model<IZakatPayment>('ZakatPayment', zakatPaymentSchema);
+
 // --- Settings Schema ---
 const settingSchema = new Schema({
   key: { type: String, required: true, unique: true },
@@ -60,29 +95,63 @@ export async function seedSettings(): Promise<void> {
     { key: 'cron_last_email_month', value: '' },
   ];
   for (const d of defaults) {
-    await SettingDoc.updateOne({ key: d.key }, { $setOnInsert: d }, { upsert: true });
+    const existing = await SettingDoc.findOne({ key: d.key });
+    if (!existing) {
+      await SettingDoc.create(d).catch(() => {});
+    }
   }
 }
 
 // --- Zakat Record CRUD ---
+async function getPaymentsForRecord(recordId: string): Promise<ZakatPayment[]> {
+  const payments = await ZakatPaymentDoc.find({ zakat_record_id: recordId });
+  return payments.map(p => p.toJSON() as unknown as ZakatPayment);
+}
+
+function enrichRecord(record: any, payments: ZakatPayment[]): ZakatRecord {
+  const amount_paid = payments.reduce((sum, p) => sum + p.amount, 0);
+  return { ...record, amount_paid, payments };
+}
+
 export async function getZakatRecords(): Promise<ZakatRecord[]> {
-  const records = await ZakatRecordDoc.find().sort({ created_at: -1 });
-  return records.map(r => r.toJSON() as ZakatRecord);
+  const records = await ZakatRecordDoc.find();
+  const recordIds = records.map(r => r._id);
+  const allPayments = await ZakatPaymentDoc.find({ zakat_record_id: { $in: recordIds } });
+  const paymentsByRecord = new Map<string, ZakatPayment[]>();
+  for (const p of allPayments) {
+    const rid = p.zakat_record_id.toString();
+    if (!paymentsByRecord.has(rid)) paymentsByRecord.set(rid, []);
+    paymentsByRecord.get(rid)!.push(p.toJSON() as unknown as ZakatPayment);
+  }
+  return records.map(r => {
+    const json = r.toJSON();
+    const id = r._id.toString();
+    return enrichRecord(json, paymentsByRecord.get(id) || []);
+  });
 }
 
 export async function getZakatRecordByYear(hijriYear: string): Promise<ZakatRecord | undefined> {
   const doc = await ZakatRecordDoc.findOne({ hijri_year: hijriYear });
-  return doc ? (doc.toJSON() as ZakatRecord) : undefined;
+  if (!doc) return undefined;
+  const json = doc.toJSON();
+  const id = doc._id.toString();
+  const payments = await getPaymentsForRecord(id);
+  return enrichRecord(json, payments);
 }
 
-export async function createZakatRecord(record: Omit<ZakatRecord, 'id' | 'created_at'>): Promise<ZakatRecord> {
+export async function createZakatRecord(record: Omit<ZakatRecord, 'id' | 'created_at' | 'amount_paid' | 'payments'>): Promise<ZakatRecord> {
   const doc = await ZakatRecordDoc.create(record);
-  return doc.toJSON() as ZakatRecord;
+  const json = doc.toJSON();
+  return enrichRecord(json, []);
 }
 
 export async function getZakatRecordById(id: string): Promise<ZakatRecord | undefined> {
   const doc = await ZakatRecordDoc.findById(id);
-  return doc ? (doc.toJSON() as ZakatRecord) : undefined;
+  if (!doc) return undefined;
+  const json = doc.toJSON();
+  const docId = doc._id.toString();
+  const payments = await getPaymentsForRecord(docId);
+  return enrichRecord(json, payments);
 }
 
 export async function markZakatPaid(id: string): Promise<boolean> {
@@ -96,13 +165,58 @@ export async function markReminderSent(id: string): Promise<boolean> {
 }
 
 export async function deleteUnpaidRecords(): Promise<number> {
+  const unpaidRecords = await ZakatRecordDoc.find({ is_paid: false });
+  for (const r of unpaidRecords) {
+    await ZakatPaymentDoc.deleteMany({ zakat_record_id: r._id });
+  }
   const result = await ZakatRecordDoc.deleteMany({ is_paid: false });
   return result.deletedCount;
 }
 
 export async function deleteZakatRecord(id: string): Promise<boolean> {
+  await ZakatPaymentDoc.deleteMany({ zakat_record_id: id });
   const result = await ZakatRecordDoc.deleteOne({ _id: id });
   return result.deletedCount > 0;
+}
+
+// --- Zakat Payment CRUD ---
+export async function addZakatPayment(
+  payment: Omit<ZakatPayment, 'id' | 'created_at'>
+): Promise<ZakatPayment> {
+  const doc = await ZakatPaymentDoc.create(payment);
+  // Recompute is_paid status
+  const record = await ZakatRecordDoc.findById(payment.zakat_record_id);
+  if (record) {
+    const payments = await ZakatPaymentDoc.find({ zakat_record_id: payment.zakat_record_id });
+    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    await ZakatRecordDoc.updateOne(
+      { _id: payment.zakat_record_id },
+      { is_paid: totalPaid >= record.amount_due }
+    );
+  }
+  return doc.toJSON() as unknown as ZakatPayment;
+}
+
+export async function deleteZakatPayment(paymentId: string): Promise<boolean> {
+  const payment = await ZakatPaymentDoc.findById(paymentId);
+  if (!payment) return false;
+  const recordId = payment.zakat_record_id;
+  await ZakatPaymentDoc.deleteOne({ _id: paymentId });
+  // Recompute is_paid status
+  const record = await ZakatRecordDoc.findById(recordId);
+  if (record) {
+    const remaining = await ZakatPaymentDoc.find({ zakat_record_id: recordId });
+    const totalPaid = remaining.reduce((sum, p) => sum + p.amount, 0);
+    await ZakatRecordDoc.updateOne(
+      { _id: recordId },
+      { is_paid: totalPaid >= record.amount_due }
+    );
+  }
+  return true;
+}
+
+export async function getPaymentsByRecordId(recordId: string): Promise<ZakatPayment[]> {
+  return getPaymentsForRecord(recordId);
 }
 
 // --- Settings CRUD ---

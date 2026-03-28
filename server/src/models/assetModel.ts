@@ -17,7 +17,7 @@ const assetSchema = new Schema(
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
     toJSON: {
       virtuals: true,
-      transform: (_doc, ret) => {
+      transform: (_doc: any, ret: any) => {
         ret.id = ret._id.toString();
         delete ret._id;
         delete ret.__v;
@@ -30,8 +30,9 @@ const assetSchema = new Schema(
 export const AssetDoc = mongoose.model('Asset', assetSchema);
 
 export async function getAllAssets(): Promise<Asset[]> {
-  const assets = await AssetDoc.find().sort({ created_at: -1 });
-  return assets.map(a => a.toJSON() as Asset);
+  const assets = await AssetDoc.find();
+  const result = assets.map(a => a.toJSON() as Asset);
+  return result.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 }
 
 export async function getAssetById(id: string): Promise<Asset | undefined> {

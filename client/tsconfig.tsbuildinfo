@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/types.ts","./src/components/assetform.tsx","./src/components/sidebar.tsx","./src/pages/assets.tsx","./src/pages/dashboard.tsx","./src/pages/loginpage.tsx","./src/pages/settingspage.tsx","./src/pages/zakatpage.tsx","./src/services/api.ts","./src/utils/hijri.ts"],"version":"5.9.3"}

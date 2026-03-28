@@ -1,9 +1,12 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import cron from 'node-cron';
 import dotenv from 'dotenv';
+import authRoutes from './routes/auth';
 import assetRoutes from './routes/assets';
 import zakatRoutes from './routes/zakat';
+import { authMiddleware } from './middleware/auth';
 import { generateZakatRecords } from './services/zakatService';
 import { calculateZakat } from './services/zakatService';
 import { sendZakatReminder } from './services/emailService';
@@ -13,15 +16,26 @@ import { connectDb } from './database';
 
 dotenv.config();
 
+// Prevent any unhandled rejection from crashing the process
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001');
 
 app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }));
 app.use(express.json());
 
-// Routes
-app.use('/api/assets', assetRoutes);
-app.use('/api/zakat', zakatRoutes);
+// Auth routes (public)
+app.use('/api/auth', authRoutes);
+
+// Protected routes
+app.use('/api/assets', authMiddleware, assetRoutes);
+app.use('/api/zakat', authMiddleware, zakatRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -144,10 +158,28 @@ cron.schedule('0 8 * * *', async () => {
   }
 });
 
-// Start server after DB is ready
-connectDb().then(async () => {
-  await seedSettings();
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+// Serve client build in production — check multiple possible locations
+import fs from 'fs';
+const candidates = [
+  path.join(__dirname, '../../client/dist'),   // local dev (from server/dist/)
+  path.join(__dirname, '../client/dist'),       // flat deploy
+  path.join(__dirname, '../public'),            // alternative
+];
+const clientDist = candidates.find(p => fs.existsSync(p)) || candidates[0];
+console.log(`Serving client from: ${clientDist}`);
+app.use(express.static(clientDist));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(clientDist, 'index.html'));
+});
+
+// Start server immediately, then connect to DB
+app.listen(PORT, async () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+  try {
+    await connectDb();
+    await seedSettings();
+    console.log('Database ready');
+  } catch (err) {
+    console.error('Failed to connect to database:', err);
+  }
 });

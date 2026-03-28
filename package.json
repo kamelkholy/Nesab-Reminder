@@ -2,6 +2,9 @@
   "name": "nesab-reminder",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "install:all": "cd server && npm install && cd ../client && npm install",
     "dev:server": "cd server && npm run dev",
@@ -9,7 +12,8 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build:server": "cd server && npm run build",
     "build:client": "cd client && npm run build",
-    "build": "npm run build:server && npm run build:client"
+    "build": "npm run build:server && npm run build:client",
+    "start": "node server/dist/index.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

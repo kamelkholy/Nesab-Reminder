@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Wallet, Calculator, Settings, Moon } from 'lucide-react';
+import { LayoutDashboard, Wallet, Calculator, Settings, Moon, LogOut } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -8,7 +8,11 @@ const navItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar() {
+interface Props {
+  onLogout: () => void;
+}
+
+export default function Sidebar({ onLogout }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -33,6 +37,12 @@ export default function Sidebar() {
           </li>
         ))}
       </ul>
+      <div className="sidebar-footer">
+        <button className="nav-item logout-btn" onClick={onLogout}>
+          <LogOut size={20} />
+          <span>Logout</span>
+        </button>
+      </div>
     </aside>
   );
 }

@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ZakatSummary, ZakatRecord } from '../types';
 import {
   getZakatSummary,
   getZakatRecords,
   generateZakatRecords,
   markZakatPaid,
+  addZakatPayment,
+  deleteZakatPayment,
   deleteZakatRecord,
   sendReminder,
 } from '../services/api';
-import { Mail, CheckCircle, RefreshCw, Trash2 } from 'lucide-react';
+import { Mail, CheckCircle, RefreshCw, Trash2, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 
 const HIJRI_MONTHS = [
   'Muharram', 'Safar', 'Rabi al-Awwal', 'Rabi al-Thani',
@@ -32,8 +34,13 @@ export default function ZakatPage({ showToast }: Props) {
   const [records, setRecords] = useState<ZakatRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [expandedRecord, setExpandedRecord] = useState<string | null>(null);
+  const [paymentForm, setPaymentForm] = useState<{ recordId: string; amount: string; date: string; note: string } | null>(null);
+  const loadedRef = useRef(false);
 
   useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     loadData();
   }, []);
 
@@ -59,13 +66,49 @@ export default function ZakatPage({ showToast }: Props) {
     }
   };
 
-  const handlePay = async (id: string) => {
+  const handlePayFull = async (id: string) => {
     try {
       await markZakatPaid(id);
-      showToast('Marked as paid', 'success');
+      showToast('Marked as fully paid', 'success');
       loadData();
     } catch (err) {
       showToast('Failed to mark as paid', 'error');
+    }
+  };
+
+  const handleAddPayment = async () => {
+    if (!paymentForm) return;
+    const amount = parseFloat(paymentForm.amount);
+    if (!amount || amount <= 0) {
+      showToast('Please enter a valid amount', 'error');
+      return;
+    }
+    if (!paymentForm.date) {
+      showToast('Please select a date', 'error');
+      return;
+    }
+    try {
+      await addZakatPayment(paymentForm.recordId, {
+        amount,
+        date_gregorian: paymentForm.date,
+        note: paymentForm.note || undefined,
+      });
+      showToast('Payment recorded', 'success');
+      setPaymentForm(null);
+      loadData();
+    } catch (err) {
+      showToast('Failed to record payment', 'error');
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!confirm('Delete this payment?')) return;
+    try {
+      await deleteZakatPayment(paymentId);
+      showToast('Payment deleted', 'success');
+      loadData();
+    } catch (err) {
+      showToast('Failed to delete payment', 'error');
     }
   };
 
@@ -160,8 +203,11 @@ export default function ZakatPage({ showToast }: Props) {
             <table>
               <thead>
                 <tr>
+                  <th></th>
                   <th>Hijri Year</th>
                   <th>Amount Due</th>
+                  <th>Paid</th>
+                  <th>Remaining</th>
                   <th>Due Date (Hijri)</th>
                   <th>Due Date (Gregorian)</th>
                   <th>Status</th>
@@ -169,35 +215,168 @@ export default function ZakatPage({ showToast }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {records.map((record) => (
-                  <tr key={record.id}>
-                    <td>{record.hijri_year} AH</td>
-                    <td><strong>{record.amount_due.toFixed(2)} EGP</strong></td>
-                    <td>{formatHijri(record.due_date_hijri)}</td>
-                    <td>{new Date(record.due_date_gregorian).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
-                    <td>
-                      {record.is_paid ? (
-                        <span className="badge badge-success">Paid</span>
-                      ) : (
-                        <span className="badge badge-danger">Unpaid</span>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {!record.is_paid && (
-                          <button className="btn btn-sm btn-primary" onClick={() => handlePay(record.id)}>
-                            <CheckCircle size={14} /> Mark Paid
+                {records.map((record) => {
+                  const remaining = Math.max(0, record.amount_due - record.amount_paid);
+                  const isExpanded = expandedRecord === record.id;
+                  return (
+                    <>
+                      <tr key={record.id}>
+                        <td>
+                          <button
+                            className="btn btn-sm"
+                            style={{ padding: '2px 6px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                            onClick={() => setExpandedRecord(isExpanded ? null : record.id)}
+                            title={isExpanded ? 'Collapse' : 'Show payments'}
+                          >
+                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </button>
-                        )}
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(record.id)}>
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </td>
+                        <td>{record.hijri_year} AH</td>
+                        <td><strong>{record.amount_due.toFixed(2)} EGP</strong></td>
+                        <td>{record.amount_paid.toFixed(2)} EGP</td>
+                        <td><strong>{remaining.toFixed(2)} EGP</strong></td>
+                        <td>{formatHijri(record.due_date_hijri)}</td>
+                        <td>{new Date(record.due_date_gregorian).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                        <td>
+                          {record.is_paid ? (
+                            <span className="badge badge-success">Paid</span>
+                          ) : record.amount_paid > 0 ? (
+                            <span className="badge badge-warning" style={{ background: '#fff3cd', color: '#856404' }}>Partial</span>
+                          ) : (
+                            <span className="badge badge-danger">Unpaid</span>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, flexDirection:'column' }}>
+                            {!record.is_paid && (
+                              <>
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => setPaymentForm({
+                                    recordId: record.id,
+                                    amount: remaining.toFixed(2),
+                                    date: new Date().toISOString().split('T')[0],
+                                    note: '',
+                                  })}
+                                  title="Add payment"
+                                >
+                                  <Plus size={14} /> Pay
+                                </button>
+                                <button className="btn btn-sm btn-secondary" onClick={() => handlePayFull(record.id)} title="Mark fully paid">
+                                  <CheckCircle size={14} /> Full
+                                </button>
+                              </>
+                            )}
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(record.id)}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${record.id}-payments`}>
+                          <td colSpan={9} style={{ padding: 0 }}>
+                            <div style={{ padding: '12px 24px', background: 'var(--color-bg-secondary, #f8f9fa)' }}>
+                              <strong style={{ display: 'block', marginBottom: 8 }}>Payment History</strong>
+                              {record.payments.length === 0 ? (
+                                <p style={{ color: '#888', margin: 0 }}>No payments recorded yet.</p>
+                              ) : (
+                                <table style={{ width: '100%', marginBottom: 8 }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Date (Gregorian)</th>
+                                      <th>Date (Hijri)</th>
+                                      <th>Amount</th>
+                                      <th>Note</th>
+                                      <th></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {record.payments.map((p) => (
+                                      <tr key={p.id}>
+                                        <td>{new Date(p.date_gregorian).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                                        <td>{formatHijri(p.date_hijri)}</td>
+                                        <td>{p.amount.toFixed(2)} EGP</td>
+                                        <td>{p.note || '—'}</td>
+                                        <td>
+                                          <button className="btn btn-sm btn-danger" onClick={() => handleDeletePayment(p.id)} style={{ padding: '2px 8px' }}>
+                                            <Trash2 size={12} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                              {!record.is_paid && (
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  style={{ marginTop: 4 }}
+                                  onClick={() => setPaymentForm({
+                                    recordId: record.id,
+                                    amount: Math.max(0, record.amount_due - record.amount_paid).toFixed(2),
+                                    date: new Date().toISOString().split('T')[0],
+                                    note: '',
+                                  })}
+                                >
+                                  <Plus size={14} /> Add Payment
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {paymentForm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }} onClick={() => setPaymentForm(null)}>
+          <div className="card" style={{ width: 420, maxWidth: '90vw', margin: 0 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: 16 }}>Record Zakat Payment</h3>
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label>Amount (EGP)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                min="0.01"
+                step="0.01"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label>Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={paymentForm.date}
+                onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label>Note (optional)</label>
+              <input
+                type="text"
+                className="form-input"
+                value={paymentForm.note}
+                onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
+                placeholder="e.g. Paid to charity X"
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setPaymentForm(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleAddPayment}>Record Payment</button>
+            </div>
           </div>
         </div>
       )}
