@@ -4,7 +4,7 @@ import { calculateZakat, generateZakatRecords } from '../services/zakatService';
 import { sendZakatReminder } from '../services/emailService';
 import * as zakatModel from '../models/zakatModel';
 import { getAllAssets, updateAsset } from '../models/assetModel';
-import { getCurrentHijriDate, gregorianToHijri } from '../utils/hijri';
+import { gregorianToHijri, getHawlCompletionDate } from '../utils/hijri';
 
 const router = Router();
 
@@ -135,8 +135,15 @@ router.post('/pay/:id', async (req: Request, res: Response) => {
   }
   await zakatModel.markZakatPaid(id);
 
-  // Reset hawl: set nisab_reached_date to current date so a new cycle starts
-  await zakatModel.setSetting('nisab_reached_date_hijri', getCurrentHijriDate());
+  // If wealth still above nisab, advance hawl start by one year; otherwise reset
+  const { goldPriceEGP, usdToEgp } = await getZakatParams();
+  const summary = await calculateZakat(goldPriceEGP, usdToEgp);
+  const nisabDate = await zakatModel.getSetting('nisab_reached_date_hijri');
+  if (summary.isAboveNisab && nisabDate) {
+    await zakatModel.setSetting('nisab_reached_date_hijri', getHawlCompletionDate(nisabDate));
+  } else {
+    await zakatModel.setSetting('nisab_reached_date_hijri', '');
+  }
 
   res.json({ success: true });
 });
@@ -172,10 +179,17 @@ router.post(
       note: note || '',
     });
 
-    // If fully paid, reset hawl
+    // If fully paid, advance or reset hawl
     const updated = await zakatModel.getZakatRecordById(req.params.id);
     if (updated?.is_paid) {
-      await zakatModel.setSetting('nisab_reached_date_hijri', getCurrentHijriDate());
+      const { goldPriceEGP, usdToEgp } = await getZakatParams();
+      const summary = await calculateZakat(goldPriceEGP, usdToEgp);
+      const nisabDate = await zakatModel.getSetting('nisab_reached_date_hijri');
+      if (summary.isAboveNisab && nisabDate) {
+        await zakatModel.setSetting('nisab_reached_date_hijri', getHawlCompletionDate(nisabDate));
+      } else {
+        await zakatModel.setSetting('nisab_reached_date_hijri', '');
+      }
     }
 
     res.json({ success: true, payment });

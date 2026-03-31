@@ -83,7 +83,7 @@ export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: 
     }
   }
 
-  const totalZakatDue = isAboveNisab && hawlComplete ? zakatableWealthEGP * 0.025 : 0;
+  const totalZakatDue = isAboveNisab ? zakatableWealthEGP * 0.025 : 0;
 
   return {
     totalWealthEGP,
