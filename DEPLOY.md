@@ -5,7 +5,7 @@
 - **App URL**: https://nesab-reminder.azurewebsites.net
 - **Resource Group**: `nesab-reminder-rg`
 - **Location**: Central US
-- **Runtime**: Node 20 LTS (Linux)
+- **Runtime**: Node 22 LTS (Linux)
 - **SKU**: B1
 - **Database**: Azure Cosmos DB for MongoDB
 - **Build**: Oryx (runs `postinstall` → installs server + client deps, then `build`)
@@ -27,7 +27,7 @@
 From the project root, commit your changes then run:
 
 ```powershell
-az webapp up --name nesab-reminder --resource-group nesab-reminder-rg --runtime "NODE:20-lts" --sku B1
+az webapp up --name nesab-reminder --resource-group nesab-reminder-rg --runtime "NODE:22-lts" --sku B1
 ```
 
 This uploads the source, Oryx builds it on Azure (`postinstall` installs subdeps, `npm run build` compiles server + client), and restarts the app.
@@ -92,7 +92,7 @@ az webapp config appsettings set `
 az webapp up `
   --name $APP_NAME `
   --resource-group $RESOURCE_GROUP `
-  --runtime "NODE:20-lts" `
+  --runtime "NODE:22-lts" `
   --sku B1
 ```
 

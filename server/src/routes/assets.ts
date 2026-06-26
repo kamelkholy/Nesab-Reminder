@@ -29,12 +29,13 @@ router.get('/:id', param('id').isMongoId(), async (req: Request, res: Response) 
 router.post(
   '/',
   [
-    body('type').isIn(['cash', 'investment', 'stock']),
+    body('type').isIn(['cash', 'investment', 'stock', 'gold']),
     body('description').isString().trim().notEmpty().escape(),
     body('amount').isFloat({ min: 0 }),
     body('currency').isIn(['USD', 'EGP']),
     body('quantity').optional().isFloat({ min: 0 }),
     body('ticker').optional().isString().trim().escape(),
+    body('karat').optional().isIn(['18', '21', '24']),
     body('acquisition_date').isISO8601(),
   ],
   async (req: Request, res: Response) => {
@@ -51,6 +52,7 @@ router.post(
       currency: req.body.currency,
       quantity: req.body.quantity,
       ticker: req.body.ticker,
+      karat: req.body.karat,
       acquisition_date: req.body.acquisition_date,
     });
 
@@ -67,12 +69,13 @@ router.put(
   '/:id',
   [
     param('id').isMongoId(),
-    body('type').optional().isIn(['cash', 'investment', 'stock']),
+    body('type').optional().isIn(['cash', 'investment', 'stock', 'gold']),
     body('description').optional().isString().trim().notEmpty().escape(),
     body('amount').optional().isFloat({ min: 0 }),
     body('currency').optional().isIn(['USD', 'EGP']),
     body('quantity').optional().isFloat({ min: 0 }),
     body('ticker').optional().isString().trim().escape(),
+    body('karat').optional().isIn(['18', '21', '24']),
     body('acquisition_date').optional().isISO8601(),
   ],
   async (req: Request, res: Response) => {

@@ -31,10 +31,21 @@ export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: 
   let totalWealthEGP = 0;
 
   for (const asset of allAssets) {
-    const baseAmount = asset.type === 'stock' && asset.quantity
-      ? asset.quantity * asset.amount
-      : asset.amount;
-    const amountEGP = toEGP(baseAmount, asset.currency, usdToEgpRate);
+    let amountEGP = 0;
+    
+    if (asset.type === 'stock' && asset.quantity) {
+      // Stock: price per share * quantity
+      amountEGP = toEGP(asset.quantity * asset.amount, asset.currency, usdToEgpRate);
+    } else if (asset.type === 'gold' && asset.karat) {
+      // Gold: weight_in_grams * (karat/24) * price_per_gram_egp
+      // This converts to pure gold equivalent and calculates its value
+      const pureGoldGrams = asset.amount * (asset.karat / 24);
+      amountEGP = pureGoldGrams * goldPricePerGramEGP;
+    } else {
+      // Cash / Investment
+      amountEGP = toEGP(asset.amount, asset.currency, usdToEgpRate);
+    }
+    
     totalWealthEGP += amountEGP;
     assets.push({ asset, amountEGP, excludedFromZakat: false });
   }
@@ -50,9 +61,15 @@ export async function calculateZakat(goldPricePerGramEGP: number, usdToEgpRate: 
     );
     let runningTotal = 0;
     for (const asset of sorted) {
-      const base = asset.type === 'stock' && asset.quantity
-        ? asset.quantity * asset.amount
-        : asset.amount;
+      let base = 0;
+      if (asset.type === 'stock' && asset.quantity) {
+        base = asset.quantity * asset.amount;
+      } else if (asset.type === 'gold' && asset.karat) {
+        const pureGoldGrams = asset.amount * (asset.karat / 24);
+        base = pureGoldGrams * goldPricePerGramEGP;
+      } else {
+        base = asset.amount;
+      }
       runningTotal += toEGP(base, asset.currency, usdToEgpRate);
       if (runningTotal >= nisabThreshold) {
         nisabReachedDate = asset.hijri_date;

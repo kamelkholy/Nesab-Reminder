@@ -12,6 +12,7 @@ interface Props {
 export default function Assets({ showToast }: Props) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [zakatableAssetIds, setZakatableAssetIds] = useState<Set<string>>(new Set());
+  const [assetValuesEGP, setAssetValuesEGP] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | undefined>();
@@ -33,6 +34,12 @@ export default function Assets({ showToast }: Props) {
           .map(a => a.asset.id!)
       );
       setZakatableAssetIds(ids);
+      const values = new Map<string, number>(
+        summary.assets
+          .filter(a => a.asset.id)
+          .map(a => [a.asset.id!, a.amountEGP])
+      );
+      setAssetValuesEGP(values);
     } catch (err) {
       showToast('Failed to load assets', 'error');
     } finally {
@@ -86,13 +93,14 @@ export default function Assets({ showToast }: Props) {
   const cashAssets = assets.filter(a => a.type === 'cash');
   const investmentAssets = assets.filter(a => a.type === 'investment');
   const stockAssets = assets.filter(a => a.type === 'stock');
+  const goldAssets = assets.filter(a => a.type === 'gold');
 
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2>My Assets</h2>
-          <p>Track your cash, investments, and stocks</p>
+          <p>Track your cash, investments, stocks, and gold</p>
         </div>
         <button className="btn btn-primary" onClick={handleAdd}>
           <Plus size={18} /> Add Asset
@@ -153,6 +161,16 @@ export default function Assets({ showToast }: Props) {
               <AssetTable assets={stockAssets} onEdit={handleEdit} onDelete={handleDelete} showStockCols zakatableIds={zakatableAssetIds} />
             </div>
           )}
+
+          {goldAssets.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h3>Gold</h3>
+                <span className="badge badge-gold">{goldAssets.length} items</span>
+              </div>
+              <AssetTable assets={goldAssets} onEdit={handleEdit} onDelete={handleDelete} showGoldCols zakatableIds={zakatableAssetIds} valuesEGP={assetValuesEGP} />
+            </div>
+          )}
         </>
       )}
 
@@ -173,13 +191,17 @@ function AssetTable({
   onEdit,
   onDelete,
   showStockCols = false,
+  showGoldCols = false,
   zakatableIds,
+  valuesEGP,
 }: {
   assets: Asset[];
   onEdit: (a: Asset) => void;
   onDelete: (id: string) => void;
   showStockCols?: boolean;
+  showGoldCols?: boolean;
   zakatableIds: Set<string>;
+  valuesEGP?: Map<string, number>;
 }) {
   return (
     <div className="table-wrapper">
@@ -187,9 +209,11 @@ function AssetTable({
         <thead>
           <tr>
             <th>Description</th>
-            <th>Value</th>
+            <th>{showGoldCols ? 'Weight' : 'Value'}</th>
             {showStockCols && <th>Ticker</th>}
             {showStockCols && <th>Shares</th>}
+            {showGoldCols && <th>Karat</th>}
+            {showGoldCols && <th>Value</th>}
             <th>Acquisition Date</th>
             <th>Hijri Date</th>
             <th>Due This Hawl</th>
@@ -203,13 +227,23 @@ function AssetTable({
             <tr key={asset.id} className={isZakatable ? 'row-zakatable' : ''}>
               <td><strong>{asset.description}</strong></td>
               <td>
-                {showStockCols && asset.quantity
-                  ? (asset.quantity * asset.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })
-                  : asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })
-                } {asset.currency}
+                {showGoldCols
+                  ? `${asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} g`
+                  : showStockCols && asset.quantity
+                  ? `${(asset.quantity * asset.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${asset.currency}`
+                  : `${asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${asset.currency}`
+                }
               </td>
               {showStockCols && <td>{asset.ticker || '—'}</td>}
               {showStockCols && <td>{asset.quantity || '—'}</td>}
+              {showGoldCols && <td>{asset.karat ? `${asset.karat}K` : '—'}</td>}
+              {showGoldCols && (
+                <td>
+                  {asset.id && valuesEGP?.has(asset.id)
+                    ? `${valuesEGP.get(asset.id)!.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP`
+                    : '—'}
+                </td>
+              )}
               <td>{asset.acquisition_date}</td>
               <td>{formatHijriDate(asset.hijri_date)}</td>
               <td>

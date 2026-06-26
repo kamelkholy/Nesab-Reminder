@@ -15,10 +15,10 @@ Full deployment steps are in [DEPLOY.md](../../DEPLOY.md). Always read it first 
 - Resource Group
 - Cosmos DB for MongoDB (free tier eligible)
 - App Service Plan (B1 ~$10-15/mo, F1 free option)
-- Web App (Linux, Node 18-lts)
+- Web App (Linux, Node 22-lts)
 - Azure Communication Services (optional, for email reminders)
 
-**Required env vars:** `MONGODB_URI`, `JWT_SECRET`, `AUTH_USERNAME`, `AUTH_PASSWORD`, `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, `WEBSITE_NODE_DEFAULT_VERSION=~18`
+**Required env vars:** `MONGODB_URI`, `JWT_SECRET`, `AUTH_USERNAME`, `AUTH_PASSWORD`, `SCM_DO_BUILD_DURING_DEPLOYMENT=true`, `WEBSITE_NODE_DEFAULT_VERSION=~22`
 
 **Optional env vars (email):** `ACS_CONNECTION_STRING`, `ACS_SENDER_ADDRESS`, `EMAIL_TO`
 

@@ -131,9 +131,11 @@ export default function Dashboard({ showToast }: Props) {
                     <td>{formatHijriDate(info.asset.hijri_date)}</td>
                     <td>
                       {info.asset.type === 'stock' && info.asset.quantity
-                        ? (info.asset.quantity * info.asset.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })
-                        : info.asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })
-                      } {info.asset.currency}
+                        ? `${(info.asset.quantity * info.asset.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${info.asset.currency}`
+                        : info.asset.type === 'gold'
+                        ? `${info.asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} g${info.asset.karat ? ` (${info.asset.karat}K)` : ''}`
+                        : `${info.asset.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${info.asset.currency}`
+                      }
                     </td>
                     <td>{info.amountEGP.toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</td>
                     <td>

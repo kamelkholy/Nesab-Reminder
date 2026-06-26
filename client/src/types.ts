@@ -1,11 +1,12 @@
 export interface Asset {
   id?: string;
-  type: 'cash' | 'investment' | 'stock';
+  type: 'cash' | 'investment' | 'stock' | 'gold';
   description: string;
   amount: number;
   currency: 'USD' | 'EGP';
   quantity?: number;
   ticker?: string;
+  karat?: number;
   acquisition_date: string;
   hijri_date: string;
   created_at?: string;

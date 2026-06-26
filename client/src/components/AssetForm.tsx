@@ -17,6 +17,7 @@ export default function AssetForm({ asset, onClose, onSaved, showToast }: Props)
   const [currency, setCurrency] = useState<Asset['currency']>(asset?.currency || 'EGP');
   const [quantity, setQuantity] = useState(asset?.quantity?.toString() || '');
   const [ticker, setTicker] = useState(asset?.ticker || '');
+  const [karat, setKarat] = useState<string>(asset?.karat?.toString() || '');
   const [acquisitionDate, setAcquisitionDate] = useState(asset?.acquisition_date || '');
   const [loading, setLoading] = useState(false);
 
@@ -29,9 +30,10 @@ export default function AssetForm({ asset, onClose, onSaved, showToast }: Props)
         type,
         description,
         amount: parseFloat(amount),
-        currency,
+        currency: type === 'gold' ? 'EGP' : currency,
         quantity: quantity ? parseFloat(quantity) : undefined,
         ticker: ticker || undefined,
+        karat: type === 'gold' && karat ? parseInt(karat) : undefined,
         acquisition_date: acquisitionDate,
       };
 
@@ -66,6 +68,7 @@ export default function AssetForm({ asset, onClose, onSaved, showToast }: Props)
               <option value="cash">Cash / Money</option>
               <option value="investment">Investment</option>
               <option value="stock">Stock</option>
+              <option value="gold">Gold</option>
             </select>
           </div>
 
@@ -82,11 +85,11 @@ export default function AssetForm({ asset, onClose, onSaved, showToast }: Props)
 
           <div className="form-row">
             <div className="form-group">
-              <label>{type === 'stock' ? 'Stock Price' : 'Value'}</label>
+              <label>{type === 'stock' ? 'Stock Price' : type === 'gold' ? 'Weight (grams)' : 'Value'}</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   type="number"
-                  step="0.001"
+                  step={type === 'gold' ? '0.01' : '0.001'}
                   min="0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -94,18 +97,20 @@ export default function AssetForm({ asset, onClose, onSaved, showToast }: Props)
                   required
                   style={{ flex: 1 }}
                 />
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value as Asset['currency'])}
-                  style={{ width: 90 }}
-                >
-                  <option value="EGP">EGP</option>
-                  <option value="USD">USD</option>
-                </select>
+                {type !== 'gold' && (
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value as Asset['currency'])}
+                    style={{ width: 90 }}
+                  >
+                    <option value="EGP">EGP</option>
+                    <option value="USD">USD</option>
+                  </select>
+                )}
               </div>
             </div>
             <div className="form-group">
-              <label>{type === 'stock' ? 'Vest Date' : 'Acquisition Date'}</label>
+              <label>{type === 'gold' ? 'Acquired Date' : type === 'stock' ? 'Vest Date' : 'Acquisition Date'}</label>
               <input
                 type="date"
                 value={acquisitionDate}
@@ -137,6 +142,22 @@ export default function AssetForm({ asset, onClose, onSaved, showToast }: Props)
                   placeholder="0"
                 />
               </div>
+            </div>
+          )}
+
+          {type === 'gold' && (
+            <div className="form-group">
+              <label>Gold Purity (Karat)</label>
+              <select
+                value={karat}
+                onChange={(e) => setKarat(e.target.value)}
+                required
+              >
+                <option value="">Select karat...</option>
+                <option value="18">18K (75% pure)</option>
+                <option value="21">21K (87.5% pure)</option>
+                <option value="24">24K (100% pure)</option>
+              </select>
             </div>
           )}
 

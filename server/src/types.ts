@@ -1,11 +1,12 @@
 export interface Asset {
   id?: string;
-  type: 'cash' | 'investment' | 'stock';
+  type: 'cash' | 'investment' | 'stock' | 'gold';
   description: string;
   amount: number;
   currency: 'USD' | 'EGP';
   quantity?: number;        // for stocks: number of shares
   ticker?: string;          // for stocks: ticker symbol
+  karat?: number;           // for gold: purity level (18, 21, or 24)
   acquisition_date: string; // Gregorian date YYYY-MM-DD
   hijri_date: string;       // Hijri date
   created_at?: string;

@@ -4,12 +4,13 @@ import { gregorianToHijri } from '../utils/hijri';
 
 const assetSchema = new Schema(
   {
-    type: { type: String, required: true, enum: ['cash', 'investment', 'stock'] },
+    type: { type: String, required: true, enum: ['cash', 'investment', 'stock', 'gold'] },
     description: { type: String, required: true },
     amount: { type: Number, required: true },
     currency: { type: String, required: true, enum: ['USD', 'EGP'], default: 'EGP' },
     quantity: { type: Number, default: null },
     ticker: { type: String, default: null },
+    karat: { type: Number, enum: [18, 21, 24], default: null },
     acquisition_date: { type: String, required: true },
     hijri_date: { type: String, required: true },
   },
